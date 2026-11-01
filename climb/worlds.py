@@ -43,11 +43,11 @@ class Server:
         cmd = command or (SSIS.format(name.replace(" ", "_")) if kind == "SSIS" else "EXEC dbo.work")
         self.steps.append(step(name, 1, "Run", kind, cmd, on_fail=on_fail))
         first = 0 if today else 1
-        for back in range(first, nights):
-            self.n += 1
+        self.n += nights
+        for back in range(first, nights):     # the newest run has the highest id, as in sysjobhistory
             bad = back < failed_nights or (back == 0 and status == 0)
             rows = steps if back == 0 and steps else ((1, "Run", 0 if bad else 1, message or "The step failed.") if bad else (1, "Run", 1, "ok"),)
-            self.history += run_rows(name, self.n, f"{day(back)}T{start}", status=0 if bad else 1, duration=hhmmss(took), steps=rows)
+            self.history += run_rows(name, self.n - back, f"{day(back)}T{start}", status=0 if bad else 1, duration=hhmmss(took), steps=rows)
         latest = 0 if today else 1
         bad = failed_nights > 0 or status == 0
         self.jobs.append(job(name, f"{day(latest)}T{start}", status=0 if bad and latest == 0 else 1, duration=hhmmss(took), schedules=schedules,
@@ -126,7 +126,7 @@ def _stale_pile(root):
     for i, n in enumerate(("Old extract", "Migration 2024", "One-off fix", "Retired feed")):
         s.jobs.append(job(n, f"{day(20 + i)}T02:00:00", status=0, schedules=0, duration=500))
         s.steps.append(step(n, 1, "Run", "TSQL", "EXEC x"))
-        s.history += run_rows(n, 500 + i, f"{day(20 + i)}T02:00:00", status=0, steps=[(1, "Run", 0, "The step failed.")])
+        s.history += run_rows(n, 500 - i, f"{day(20 + i)}T02:00:00", status=0, steps=[(1, "Run", 0, "The step failed.")])
     s.add("Archive files", "PowerShell", "C:\\etl\\archive.ps1", start="03:00:00", on_fail=3, steps=((1, "Run", 0, "Access denied to \\\\files\\archive"),))
     s.add("Bronze load", start="01:00:00")
     return [s]
@@ -168,7 +168,7 @@ def _recovered(root):
     s.history += run_rows("Silver load", 900, f"{day()}T03:00:00", duration=hhmmss(600), steps=[(1, "Run", 1, "ok")])
     s.history += run_rows("Silver load", 899, f"{day()}T02:00:00", status=0, duration=hhmmss(30), steps=[(1, "Run", 0, "Deadlock victim")])
     for b in range(1, 7):
-        s.history += run_rows("Silver load", 800 + b, f"{day(b)}T02:00:00", duration=hhmmss(600), steps=[(1, "Run", 1, "ok")])
+        s.history += run_rows("Silver load", 800 - b, f"{day(b)}T02:00:00", duration=hhmmss(600), steps=[(1, "Run", 1, "ok")])
     s.jobs.append(job("Silver load", f"{day()}T03:00:00", duration=hhmmss(600)))
     return [s]
 
