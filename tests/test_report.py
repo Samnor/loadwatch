@@ -298,3 +298,17 @@ def test_a_deadline_missed_with_no_cause_keeps_its_rank(estate):
     estate.jobs = [job("Alone", "2026-11-01T01:00:00"), job("Other", "2026-11-02T01:00:00")]
     doc = report(estate)
     assert doc["start_here"] == "Alone" and "caused_by" not in doc["attention"][0]
+
+
+def test_a_job_that_fails_on_and_off_is_flaky_even_on_a_good_night(estate):
+    days = ["2026-11-02", "2026-11-01", "2026-10-31", "2026-10-30", "2026-10-29", "2026-10-28", "2026-10-27"]
+    estate.jobs = [job("Wobbly", "2026-11-02T01:00:00")]
+    estate.history = [r for i, d in enumerate(days) for r in run_rows("Wobbly", 20 - i, f"{d}T01:00:00", status=0 if i % 2 else 1)]
+    a = report(estate)["attention"][0]
+    assert a["rule"] == "flaky" and "failed 3 of its last 7 runs" in a["message"]
+
+
+def test_one_bad_night_is_not_flaky(estate):
+    estate.jobs = [job("Fine", "2026-11-02T01:00:00")]
+    estate.history = run_rows("Fine", 3, "2026-11-02T01:00:00") + run_rows("Fine", 2, "2026-11-01T01:00:00", status=0) + run_rows("Fine", 1, "2026-10-31T01:00:00")
+    assert report(estate)["attention"] == []

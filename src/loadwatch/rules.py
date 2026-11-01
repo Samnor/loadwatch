@@ -16,6 +16,7 @@ from .config import DAYS, Config, Expectation
 from .observe import Observation
 
 SCRIPT_STEPS = {"PowerShell", "CmdExec"}
+FLAKY_RUNS, FLAKY_FAILURES = 10, 3      # failed this many of the last runs, and succeeded last
 # An account a schedule runs as, not a person. Anything that might be one counts as one: calling a production failure a test is the
 # mistake to avoid, and ssisbliss knows the real accounts (run_as_accounts) but no command says them yet.
 _SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|\$$|(?:^|[\\._-])(?:svc|srv|service|sa|sql|agent|etl|batch|app|system)", re.I)
@@ -24,7 +25,7 @@ _OUTPUT_ERROR = re.compile(r"Traceback \(most recent call last\)|\bException\b|\
 # no answer from a server is not good news.
 RULES = {"server-unreachable": None, "blind-spot": None, "job-failed": "jobs", "deadline-missed": "jobs",
          "missed-schedule": "jobs", "job-unscheduled": "jobs", "overrunning": "history", "overdue": "history",
-         "ran-long": "history", "step-failed-silently": "history",
+         "ran-long": "history", "flaky": "history", "step-failed-silently": "history",
          "script-output-error": "history", "slower": "history", "chain-stopped": "chains", "chain-missing-job": "chains",
          "ssis-failed": "executions", "health": "health"}
 
@@ -166,7 +167,7 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
         kept = [Signal(**s) for s in prev.get("from_history", [])]
         if name in o.histories:
             kept = _silent(o, v, runs[0]) if runs and runs[0].get("outcome") == "succeeded" else []
-            kept += _overdue(o, cfg, v, runs, active, missed, now) + _ran_long(o, cfg, v, runs)
+            kept += _overdue(o, cfg, v, runs, active, missed, now) + _ran_long(o, cfg, v, runs) + _flaky(o, cfg, v, runs)
         out += kept
         ids = [s["ssis_execution_id"] for r in runs for s in r.get("steps", [])
                if s["outcome"] != "succeeded" and s.get("ssis_execution_id")]
@@ -187,6 +188,17 @@ def _ran_long(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Si
         return []
     return [Signal(o.env, "ran-long", v["name"], "warning", f"{v['name']} took {_minutes(last)} at {runs[0]['start']}; it usually takes "
                    f"{_minutes(usual)}. Anything after it started late", f'ssisbliss history "{v["name"]}" --runs 10', runs[0]["start"])]
+
+
+def _flaky(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Signal]:
+    """Fine tonight, and failing on and off: on any one morning it looks healthy, and only its history says otherwise."""
+    done = [r for r in runs[:FLAKY_RUNS] if r.get("outcome") in ("succeeded", "failed", "canceled")]
+    bad = [r for r in done if r["outcome"] != "succeeded"]
+    if not done or done[0]["outcome"] != "succeeded" or len(bad) < FLAKY_FAILURES:
+        return []
+    return [Signal(o.env, "flaky", v["name"], "warning", f"{v['name']} succeeded last, but failed {len(bad)} of its last {len(done)} runs, most "
+                   f"recently at {bad[0]['start']}: {(bad[0].get('message') or 'see its history')[:200]}",
+                   f'ssisbliss history "{v["name"]}" --runs {len(done)} --failed', done[0]["start"])]
 
 
 def _overdue(o: Observation, cfg: Config, v: dict, runs: list[dict], active: bool, missed: str | None,

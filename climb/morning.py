@@ -74,6 +74,20 @@ def answer(text: str) -> tuple[list[str], str | None] | None:
     return names, None if one.lower() in ("none", "") else one
 
 
+def says(s: worlds.Scenario, said: str, world: Path | None) -> bool:
+    """A yes, no, unknown or number leads the answer; names must all be there, and no other job of that morning."""
+    words = _norm(said).split()
+    if s.expect[0].lower() in ("yes", "no", "unknown") or s.expect[0].isdigit():
+        return bool(words) and words[0] == s.expect[0].lower()
+    if len(s.expect) == 1 and s.name == "q-why":
+        return s.expect[0].replace("-", " ") in _norm(said)
+    text = _norm(said)
+    if not all(_norm(real) in text for real in s.expect):
+        return False
+    known = [j["name"] for f in (world / "servers").glob("*/msdb.json") for j in json.loads(f.read_text())["jobs"]] if world else []
+    return not any(_norm(k) in text for k in known if not any(same(k, real) for real in s.expect))
+
+
 def grade_question(s: worlds.Scenario, text: str, world: Path | None) -> dict:
     lines = [re.sub(r"[*`]", "", x).strip() for x in text.splitlines()]
     found = [x for x in lines if re.match(r"(?i)^answer\s*:", x)]
@@ -84,8 +98,7 @@ def grade_question(s: worlds.Scenario, text: str, world: Path | None) -> dict:
         page = (world / "work" / "morning.html") if world else None
         right = bool(page and page.is_file() and "<svg" in page.read_text(errors="replace"))
     else:
-        names = [n.strip() for n in re.split(r"[,;]", said) if n.strip()]
-        right = all(any(same(n, real) for n in names) for real in s.expect) and all(any(same(n, real) for real in s.expect) for n in names)
+        right = says(s, said, world)
     return {"set": right, "first": right, "points": 100 if right else 0, "note": f"said {said[:90]}"}
 
 
