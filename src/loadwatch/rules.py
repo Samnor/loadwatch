@@ -297,7 +297,14 @@ def _silence(o: Observation, signals: list[Signal]) -> list[Signal]:
 def _chains(o: Observation) -> list[Signal]:
     out = []
     for c in o.chains:
-        if c["verdict"].startswith("stopped after"):
+        links = c.get("links", [])
+        off = next((i for i, x in enumerate(links) if x.get("disabled") and x["state"] == "not_started"), None)
+        if off is not None and c["verdict"].startswith("stopped after"):      # the chain did not fail: someone turned a link off
+            job, later = links[off]["job"], [x["job"] for x in links[off + 1:] if x["state"] == "not_started"]
+            more = f", so {', '.join(later)} did not run either" if later else ""
+            out.append(Signal(o.env, "chain-stopped", job, "critical", f"{job} is disabled, and chain {c['root']} stops there{more}. Nothing failed: "
+                              f"enable it if that was not meant", f'ssisbliss chain --name "{c["root"]}"', c.get("run_started"), blocks=later))
+        elif c["verdict"].startswith("stopped after"):
             out.append(Signal(o.env, "chain-stopped", c["root"], "critical", f"chain {c['root']} {c['verdict']}. {c.get('why', '')}"
                               .strip(), f'ssisbliss chain --name "{c["root"]}"'))
         for job in c.get("missing_jobs", []):

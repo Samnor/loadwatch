@@ -394,3 +394,12 @@ def test_an_old_deploy_is_not_blamed(estate):
     estate.history = run_rows("Silver", 5, run.isoformat(), status=0, steps=[(1, "Run", 0, "Failed. Execution ID: 71")])
     a = report(estate, now.isoformat())["attention"][0]
     assert "deployed_by" not in a and " deployed " not in a["message"]
+
+
+def test_a_disabled_job_in_a_chain_is_named_and_not_the_job_before_it(estate):
+    estate.jobs = [job("1 A", "2026-11-02T00:30:00"), job("2 B", "2026-11-01T01:00:00", enabled=False, schedules=0), job("3 C", "2026-11-01T02:00:00", schedules=0)]
+    estate.steps = [step("1 A", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'2 B';"),
+                    step("2 B", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'3 C';")]
+    doc = report(estate)
+    assert doc["start_here"] == "2 B" and doc["start_because"] == "3 C did not run because of it"
+    assert "2 B is disabled" in doc["attention"][0]["message"] and "Nothing failed" in doc["attention"][0]["message"]
