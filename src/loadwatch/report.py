@@ -46,7 +46,31 @@ def build(results: list[Result], alerts: list[dict], since: datetime, now: datet
             "activities": ordered, "timeline": gantt.timeline(ordered, now),
             "not_watched": [{"kind": t.kind, "name": t.name, "why": t.why_not} for t in (estate.targets if estate else [])
                             if not t.watched and t.why_not != "nothing in it runs"],
-            "notes": estate.notes if estate else []}
+            "notes": estate.notes if estate else [], "covered": covered(estate)}
+
+
+def covered(estate) -> dict:
+    """What was looked at, and what was not, so that "nothing needs you" says how far that goes."""
+    targets = estate.targets if estate else []
+    servers = [t.name for t in targets if t.kind == "sql_server" and t.watched]
+    workspaces = [t.name for t in targets if t.kind == "fabric_workspace" and t.watched]
+    idle = sum(t.kind == "fabric_workspace" and not t.watched for t in targets)
+    if workspaces:
+        fabric = f"{len(workspaces)} Fabric workspace{'s' if len(workspaces) != 1 else ''}"
+    else:
+        why = next((n for n in (estate.notes if estate else []) if n.startswith("Fabric")), None)
+        fabric = why.rstrip(".") if why else f"no Fabric workspace with anything to watch ({idle} without)" if idle else (
+            "no Fabric workspaces are visible to this login")
+        if estate and not why and all("loadwatch.toml" in t.found_by for t in targets):
+            fabric = "Fabric is not watched: loadwatch.toml lists what to watch"
+    return {"sql_servers": servers, "fabric_workspaces": workspaces, "fabric": fabric}
+
+
+def looked_at(doc: dict) -> str:
+    c = doc["covered"]
+    n = len(c["sql_servers"])
+    sql = f"{n} SQL Server{'s' if n != 1 else ''}" + (f" ({', '.join(c['sql_servers'][:4])})" if n else "")
+    return f"Looked at {sql}, and {c['fabric']}."
 
 
 def estate_doc(estate) -> dict:
@@ -109,7 +133,7 @@ def _table(lines: list[str], doc: dict) -> None:
 
 
 def markdown(doc: dict) -> str:
-    lines = [f"# {doc['verdict']}", "", summary(doc), ""]
+    lines = [f"# {doc['verdict']}", "", summary(doc), "", looked_at(doc), ""]
     if doc.get("start_here"):
         lines += [f"**Start here: {doc['start_here']}**: {doc['start_because']}.", ""]
     blind = [f"**{s['source']}**: could not read {part}: {why}" for s in doc["sources"] for part, why in s.get("unread", {}).items()]
@@ -130,4 +154,4 @@ def markdown(doc: dict) -> str:
     if doc.get("notes"):
         lines += ["## Notes", "", *[f"- {n}" for n in doc["notes"]], ""]
     where = ", ".join(f"{s['source']} ({s['location'] or 'no answer'}, watching {s['watched']})" for s in doc["sources"])
-    return "\n".join([*lines, f"Sources: {where}.", ""])
+    return "\n".join([*lines, f"Sources: {where}.", "", "This is the whole picture: `loadwatch status` and `alerts` show these same alerts.", ""])

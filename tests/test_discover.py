@@ -195,3 +195,9 @@ def test_next_commands_can_be_pasted_into_cmd_exe(home, monkeypatch):
     from loadwatch.rules import _with_target
     quoted = _with_target('ssisbliss jobs --brief', Namespace(env=None, server="HOST\\SQLPROD"))
     assert "'" in quoted         # what the rule above has to undo, until ssisbliss quotes for Windows
+
+
+def test_a_report_says_why_fabric_was_not_looked_at(home, monkeypatch):
+    monkeypatch.setenv("LOADWATCH_SERVERS", server(home))
+    doc, _ = cli.run(["report", "--format", "json", "--now", "2026-11-02T08:00:00"])
+    assert "not on PATH" in doc["covered"]["fabric"] and len(doc["covered"]["sql_servers"]) == 1

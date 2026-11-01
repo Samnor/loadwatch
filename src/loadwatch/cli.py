@@ -111,17 +111,20 @@ def cmd_ack(a, cfg: config.Config, store: Store) -> tuple[dict, int]:
 
 
 def parser() -> Parser:
-    p = Parser(prog="loadwatch", description=__doc__)
+    p = Parser(prog="loadwatch", formatter_class=argparse.RawDescriptionHelpFormatter, description=(
+        "What ran, and what needs your attention, across your SQL Servers and Fabric workspaces.\n\n"
+        "Run `loadwatch report`. It is the whole answer: it finds what to watch, reads it, and says what needs you and where to start.\n"
+        "Nothing else has to run first, and no other loadwatch command adds to it."))
     p.add_argument("--config", help=f"default: ./{config.FILE}, then ~/.config/loadwatch/{config.FILE}")
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=Parser)
-    s = sub.add_parser("discover", help="work out what can be watched: SQL Servers and Fabric workspaces")
+    s = sub.add_parser("discover", help="what can be watched, and why not: only needed to add a server. A report does this by itself")
     s.add_argument("--network", action="store_true", help="also ask the domain and the local network, and try a Windows login "
                                                           "on every SQL Server they name")
     s.add_argument("--server", action="append", default=[], help="a SQL Server to add (repeat)")
     s.add_argument("--format", choices=["text", "json"], default="text")
     s.add_argument("--now", help=argparse.SUPPRESS)
     s.set_defaults(fn=cmd_discover)
-    s = sub.add_parser("report", help="the morning report: everything that ran today, and what needs your attention")
+    s = sub.add_parser("report", help="start here: everything that ran today, what needs your attention, and where to start")
     s.add_argument("--since", help="start of the period (default: midnight today), e.g. 2026-11-01T18:00:00")
     s.add_argument("--format", choices=["markdown", "html", "json"], default="markdown",
                    help="markdown for a terminal; html for a page with the timeline chart; json for agents")
@@ -130,12 +133,12 @@ def parser() -> Parser:
     s.add_argument("--open", action="store_true", help="with --out: open it in the browser")
     s.add_argument("--now", help=argparse.SUPPRESS)
     s.set_defaults(fn=cmd_report)
-    s = sub.add_parser("check", help="one pass for a scheduler: update the alerts, tell someone")
+    s = sub.add_parser("check", help="for a scheduler, every few minutes: update the alerts and tell someone. Not needed for a report")
     s.add_argument("--now", help="the clock, for tests and replays")
     s.set_defaults(fn=cmd_check)
-    s = sub.add_parser("status", help="what is open, and when each environment was last looked at")
+    s = sub.add_parser("status", help="the alerts from the last report or check, without looking again")
     s.set_defaults(fn=cmd_status)
-    s = sub.add_parser("alerts", help="open alerts")
+    s = sub.add_parser("alerts", help="the same alerts as a list, with the ids `ack` takes")
     s.add_argument("--all", action="store_true", help="resolved ones too")
     s.set_defaults(fn=cmd_alerts)
     s = sub.add_parser("ack", help="acknowledge an alert: it stays open, and nobody is reminded of it")

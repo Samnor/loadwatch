@@ -236,7 +236,7 @@ def test_the_report_opens_with_where_to_start(estate):
     nightly(estate, status=0)
     estate.save()
     text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
-    assert text.split("\n")[4].startswith("**Start here: Nightly**")
+    assert text.split("\n")[6].startswith("**Start here: Nightly**")
 
 
 def test_anything_that_might_be_a_service_account_is_not_called_a_person():
@@ -244,3 +244,18 @@ def test_anything_that_might_be_a_service_account_is_not_called_a_person():
     for account in ("CORP\\svc_etl", "CORP\\sql-agent", "NT SERVICE\\SQLAgent$PROD", "CORP\\SQL01$", "CORP\\etl.batch", "sa", "agent"):
         assert _SERVICE.search(account), account
     assert not _SERVICE.search("CORP\\dave") and not _SERVICE.search("LAB\\anna.berg")
+
+
+def test_the_report_says_what_it_looked_at(estate):
+    nightly(estate)
+    estate.save()
+    doc = report(estate)
+    assert doc["covered"]["sql_servers"] == ["prod"] and doc["covered"]["fabric"] == "Fabric is not watched: loadwatch.toml lists what to watch"
+    text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
+    assert "Looked at 1 SQL Server (prod), and Fabric is not watched" in text and "This is the whole picture" in text
+
+
+def test_help_says_the_report_is_the_whole_answer():
+    from loadwatch import cli
+    text = cli.parser().format_help()
+    assert "It is the whole answer" in text and "start here" in text
