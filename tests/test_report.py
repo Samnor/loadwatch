@@ -394,3 +394,11 @@ def test_an_old_deploy_is_not_blamed(estate):
     estate.history = run_rows("Silver", 5, run.isoformat(), status=0, steps=[(1, "Run", 0, "Failed. Execution ID: 71")])
     a = report(estate, now.isoformat())["attention"][0]
     assert "deployed_by" not in a and " deployed " not in a["message"]
+
+
+def test_the_table_says_when_each_job_finished(estate):
+    estate.jobs = [job("Done", "2026-11-02T01:00:00", duration=3000), job("Busy", "2026-11-01T01:00:00", running_since="2026-11-02T07:00:00")]
+    estate.history = run_rows("Done", 1, "2026-11-02T01:00:00", duration=3000)
+    estate.save()
+    text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
+    assert "| 01:30:00 |" in text and "| still running |" in text
