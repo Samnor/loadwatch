@@ -54,7 +54,7 @@ ATTENTION: name, name, name   (or ATTENTION: none)
 FIRST: name   (or FIRST: none)"""
 ASK = """It's the morning and you're on call for our data platform: SQL Server Agent jobs, and Fabric. The `loadwatch` command is
 installed; start with `loadwatch --help`. Do not change anything on any server. {ask}
-End your reply with exactly this one line, using the job or model names (comma separated if there are several):
+End your reply with exactly this one line, holding only what was asked for: a yes or no, a number, or names (comma separated):
 ANSWER: your answer"""
 TOOLS = ["Bash(loadwatch:*)", "Bash(ssisbliss:*)"]
 

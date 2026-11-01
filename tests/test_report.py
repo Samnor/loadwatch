@@ -236,7 +236,7 @@ def test_the_report_opens_with_where_to_start(estate):
     nightly(estate, status=0)
     estate.save()
     text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
-    assert text.split("\n")[6].startswith("**Start here: Nightly**") and "Everything that needs attention: Nightly." in text
+    assert text.split("\n")[6].startswith("**Start here: Nightly**")
 
 
 def test_anything_that_might_be_a_service_account_is_not_called_a_person():

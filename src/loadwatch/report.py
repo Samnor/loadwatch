@@ -40,7 +40,6 @@ def build(results: list[Result], alerts: list[dict], since: datetime, now: datet
             "sources": [{"source": r.source, "kind": r.kind, "location": r.location, "watched": r.watched,
                          "ran": len(r.activities), **({"unread": r.unread} if r.unread else {})} for r in results],
             "start_here": attention[0]["subject"] if urgent else None, "start_because": why_first(attention[0], now) if urgent else None,
-            "needs_attention": [a["subject"] for a in urgent],
             "attention": [_alert(a) for a in attention],
             "acknowledged": [_alert(a) for a in current if a["acked_at"] is not None],
             "resolved": [_alert(a) for a in alerts if a["resolved_at"] is not None and a["resolved_at"] >= stamp],
@@ -65,13 +64,6 @@ def covered(estate) -> dict:
         if estate and not why and all("loadwatch.toml" in t.found_by for t in targets):
             fabric = "Fabric is not watched: loadwatch.toml lists what to watch"
     return {"sql_servers": servers, "fabric_workspaces": workspaces, "fabric": fabric}
-
-
-def listed(doc: dict) -> str:
-    """All of it, in one line. An old failure or a person's test still counts, and says what it is."""
-    def one(a: dict) -> str:
-        return a["subject"] + (" (a person's test)" if a.get("person") else "")
-    return ", ".join(one(a) for a in doc["attention"] if a["severity"] != "info")
 
 
 def looked_at(doc: dict) -> str:
@@ -143,7 +135,7 @@ def _table(lines: list[str], doc: dict) -> None:
 def markdown(doc: dict) -> str:
     lines = [f"# {doc['verdict']}", "", summary(doc), "", looked_at(doc), ""]
     if doc.get("start_here"):
-        lines += [f"**Start here: {doc['start_here']}**: {doc['start_because']}.", "", f"Everything that needs attention: {listed(doc)}.", ""]
+        lines += [f"**Start here: {doc['start_here']}**: {doc['start_because']}.", ""]
     blind = [f"**{s['source']}**: could not read {part}: {why}" for s in doc["sources"] for part, why in s.get("unread", {}).items()]
     for severity, title in HEADINGS.items():
         _section(lines, title, [a for a in doc["attention"] if a["severity"] == severity])

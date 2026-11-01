@@ -66,13 +66,12 @@ def _table(doc: dict) -> str:
 
 
 def page(doc: dict) -> str:
-    from .report import HEADINGS, listed, looked_at, summary
+    from .report import HEADINGS, looked_at, summary
     parts = [f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              f'<title>{escape(doc["verdict"])}</title><style>{CSS}</style><main><h1>{escape(doc["verdict"])}</h1>'
              f'<p class="sub">{escape(summary(doc))}</p><p class="sub">{escape(looked_at(doc))}</p>']
     if doc.get("start_here"):
-        parts.append(f'<p class="start"><b>Start here: {escape(doc["start_here"])}</b>: {escape(doc["start_because"])}.</p>'
-                     f'<p class="sub">Everything that needs attention: {escape(listed(doc))}.</p>')
+        parts.append(f'<p class="start"><b>Start here: {escape(doc["start_here"])}</b>: {escape(doc["start_because"])}.</p>')
     for severity, title in HEADINGS.items():
         found = [a for a in doc["attention"] if a["severity"] == severity]
         if found:
