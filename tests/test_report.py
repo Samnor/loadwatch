@@ -403,3 +403,24 @@ def test_a_disabled_job_in_a_chain_is_named_and_not_the_job_before_it(estate):
     doc = report(estate)
     assert doc["start_here"] == "2 B" and doc["start_because"] == "3 C did not run because of it"
     assert "2 B is disabled" in doc["attention"][0]["message"] and "Nothing failed" in doc["attention"][0]["message"]
+
+
+def durations(estate, name, minutes):
+    estate.jobs = [job(name, "2026-11-02T01:00:00")]
+    estate.history = [r for i, m in enumerate(minutes) for r in run_rows(name, 30 - i, f"2026-10-{31 - i:02d}T01:00:00", duration=m // 60 * 10000 + m % 60 * 100)]
+
+
+def test_a_job_slowing_a_little_every_night_is_creeping(estate):
+    durations(estate, "Orders", [90, 82, 74, 66, 58, 50, 42, 34, 26, 20])
+    a = report(estate)["attention"][0]
+    assert a["rule"] == "creeping" and "has slowed steadily" in a["message"]
+
+
+def test_a_steady_job_is_not_creeping(estate):
+    durations(estate, "Orders", [30, 31, 29, 30, 32, 30, 29, 31, 30, 30])
+    assert report(estate)["attention"] == []
+
+
+def test_one_slow_night_is_not_a_trend(estate):
+    durations(estate, "Orders", [80, 30, 31, 29, 30, 32, 30, 29, 31, 30])
+    assert "creeping" not in [a["rule"] for a in report(estate)["attention"]]
