@@ -182,3 +182,16 @@ def test_browser_and_domain_answers_are_read():
     assert discover.parse_browser(reply) == ["SQL01\\PROD", "SQL02"]
     spns = "CN=x\n\tMSSQLSvc/sql01.corp.example:1433\n\tMSSQLSvc/sql02.corp.example:PROD\n\tMSSQLSvc/sql03.corp.example:14331\n\tMSSQLSvc/sql04.corp.example\n"
     assert discover.parse_spns(spns) == ["sql01.corp.example", "sql02.corp.example\\PROD", "sql03.corp.example,14331", "sql04.corp.example"]
+
+
+def test_next_commands_can_be_pasted_into_cmd_exe(home, monkeypatch):
+    fake = server(home, jobs=[job("Nightly", "2026-11-02T01:00:00", status=0)])
+    named = f"{fake}"
+    monkeypatch.setenv("LOADWATCH_SERVERS", named)
+    doc, _ = cli.run(["report", "--format", "json", "--now", "2026-11-02T08:00:00"])
+    assert "'" not in doc["attention"][0]["next"]
+    from argparse import Namespace
+
+    from loadwatch.rules import _with_target
+    quoted = _with_target('ssisbliss jobs --brief', Namespace(env=None, server="HOST\\SQLPROD"))
+    assert "'" in quoted         # what the rule above has to undo, until ssisbliss quotes for Windows

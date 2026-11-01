@@ -151,19 +151,24 @@ Things loadwatch had to work around. Each belongs there, not here.
   should still be fine). `history --since` over all jobs would be one query.
 - **More of a step's output.** A succeeded step's message is cut to 200 characters, so `script-output-error` can miss a
   traceback further in. SQL Agent also keeps only the first part of the output; a job's own output file would need reading.
-- **`_with_target`** is private, and loadwatch uses it to make `next` commands ready to run.
+- **`_with_target`** is private, and loadwatch uses it to make `next` commands ready to run. It also quotes for a POSIX shell,
+  which cmd.exe does not read, so loadwatch swaps the quotes.
 - **A stable API.** loadwatch pins one ssisbliss commit, because `cli.run`'s documents and `_with_target` are not promised yet.
 
 ## Status
 
-An early sketch. On SQL Server 2019 with Windows integrated auth (NTLM, as a sysadmin), `report` read 20 jobs and drew 69 runs
-in about 1 s.
-Real failures were caught: a PowerShell `throw`, a failed step in a job that went on, a traceback with exit code 0, a job
-being disabled, and a broken chain that then recovered. `missed-schedule`, `overdue`, `deadline-missed` and the webhook have
-only been run against fakes. It has not met a real production estate, so expect its thresholds to need tuning.
+Early, and checked on real systems. A clean `pip install` on Windows Server with SQL Server 2019, in an empty folder with no
+config, found both instances on the machine and their SSIS catalogs in 1 s and reported in about 2 s, logging in with Windows
+integrated auth as a sysadmin. On real failures it caught a PowerShell `throw`, a failed step in a job that went on, a traceback
+with exit code 0, a job being disabled, and a broken chain that then recovered. On a real Fabric tenant it found 4 workspaces and
+26 items with no setup, and read their pipelines' and refreshes' history in about 3 s.
 
-Not built: alerts for a job that disappears, confirming a failure over two passes before alerting, sending the report by
-email, each step as a segment of its bar, and history kept longer than msdb keeps it.
+Only run against fakes so far: `missed-schedule`, `overdue`, `deadline-missed`, the webhook, the SSMS and other tool finders,
+`--network`, a failed Fabric pipeline or refresh (the tenant had none), and running on a Windows machine that also has `az`. It
+has not met a production estate, so expect its thresholds to need tuning.
+
+Not built: deadlines for Fabric items, alerts for a job that disappears, confirming a failure over two passes before alerting,
+sending the report by email, each step as a segment of its bar, and history kept longer than msdb keeps it.
 
 ## Development
 

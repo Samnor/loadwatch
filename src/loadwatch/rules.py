@@ -250,4 +250,5 @@ def evaluate(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime
         if s.next:     # the same server the signal is about
             flag, value = (o.target + ["", ""])[:2]
             s.next = _with_target(s.next, Namespace(env=value if flag == "--env" else None, server=value if flag == "--server" else None))
+            s.next = re.sub(r"'([^']*)'", r'"\1"', s.next)      # single quotes mean nothing to cmd.exe, and double ones work everywhere
     return signals, looked, {**memory, **remembered}
