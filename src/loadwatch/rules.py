@@ -49,6 +49,8 @@ def last_deadline(by: str, days: tuple[str, ...], now: datetime) -> datetime | N
 
 
 def _deadline(o: Observation, e: Expectation, view: dict | None, now: datetime) -> Signal | None:
+    cause = next((job for job, later in _blocked(o).items() if e.job in later), None)
+    because = f". It is waiting for {cause}" if cause else ""
     at = last_deadline(e.by, e.days, now)
     if at is None:
         return None
@@ -60,8 +62,8 @@ def _deadline(o: Observation, e: Expectation, view: dict | None, now: datetime) 
         return None
     state = (f"it has been running since {view['running_since']}" if view["running"]
              else f"its last run was {last['outcome']} at {last['start']}" if last else "it has never run")
-    return Signal(o.env, "deadline-missed", e.job, "critical", f"{e.job} should have succeeded by {e.by}: {state}",
-                  f'ssisbliss history "{e.job}" --runs 5')
+    return Signal(o.env, "deadline-missed", e.job, "critical", f"{e.job} should have succeeded by {e.by}: {state}{because}",
+                  f'ssisbliss history "{e.job}" --runs 5', at.isoformat()[:19], caused_by=cause)
 
 
 def _package(failure: dict | None) -> str:
@@ -85,12 +87,13 @@ def _streak(runs: list[dict]) -> tuple[int, int]:
 
 
 def _blocked(o: Observation) -> dict[str, list[str]]:
-    """job -> the jobs after it in its chain that did not start. From ssisbliss's own chain view."""
+    """job -> the jobs after it in its chain that have not started: because it failed, or because it is still running. From
+    ssisbliss's own chain view."""
     out: dict[str, list[str]] = {}
     for c in o.chains:
         links = c.get("links", [])
         for i, link in enumerate(links):
-            if link["state"] in ("failed", "canceled"):
+            if link["state"] in ("failed", "canceled", "running"):
                 out[link["job"]] = [x["job"] for x in links[i + 1:] if x["state"] == "not_started"]
     return out
 
@@ -154,8 +157,10 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
         if v["running"] and v.get("running_since") and len(usual) >= cfg.min_runs:
             took, typical = (now - _at(v["running_since"])).total_seconds(), median(usual)
             if took >= cfg.overrun_factor * typical and took - typical >= cfg.overrun_minutes * 60:
+                waiting = _blocked(o).get(name, [])
+                stop = f". {', '.join(waiting)} cannot start until it finishes" if waiting else ""
                 out.append(Signal(o.env, "overrunning", name, "warning", f"{name} has run for {_minutes(took)}; it usually takes "
-                                  f"{_minutes(typical)} (median of {len(usual)} runs)", "ssisbliss chain", v["running_since"]))
+                                  f"{_minutes(typical)} (median of {len(usual)} runs){stop}", "ssisbliss chain", v["running_since"], blocks=waiting))
         # What the job's history says only counts when it was read; the next pass, which does not read it, must not
         # take that for the problem having gone. It holds until history is read again.
         kept = [Signal(**s) for s in prev.get("from_history", [])]

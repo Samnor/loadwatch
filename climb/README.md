@@ -24,8 +24,8 @@ Haiku and Luna, 10 mornings, two runs each (40 runs per measurement).
 On four held-out mornings (16 runs each, side by side): the original got 13/16 in 96 steps and the kept version 14/16 in 48; iteration 3
 13/16 in 38, and a lower score than the kept version, which supports reverting it. It is on the branch `climb-iter3`.
 
-The held-out mornings found one real gap, left unfixed so that they stay honest: when a job overruns and so a later job misses its
-deadline, the report starts with the deadline and not the job holding it up. `blocks` is only worked out for failed jobs.
+The held-out mornings found one real gap, fixed after the climb: when a job overran and so a later job missed its
+deadline, the report started with the deadline and not the job holding it up.
 
 The Windows lab found what the fake mornings could not: on a job that failed days ago, Start here said "it is new tonight". The reason
 now only says what is true of the alert.

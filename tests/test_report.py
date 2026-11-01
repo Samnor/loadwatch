@@ -273,3 +273,27 @@ def test_a_failure_from_last_night_is_new(estate):
     estate.jobs = [job("Fresh", "2026-11-02T01:00:00", status=0)]
     estate.history = run_rows("Fresh", 2, "2026-11-02T01:00:00", status=0) + run_rows("Fresh", 1, "2026-11-01T01:00:00")
     assert report(estate)["start_because"] == "it is new"
+
+
+def overrun_world(estate):
+    estate.config('[[expect]]\nenv = "prod"\njob = "3 C"\nby = "06:00"\n')
+    estate.jobs = [job("1 A", "2026-11-02T00:30:00"), job("2 B", "2026-11-01T01:00:00", running_since="2026-11-02T01:00:00"),
+                   job("3 C", "2026-11-01T02:00:00", schedules=0)]
+    estate.steps = [step("1 A", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'2 B';"),
+                    step("2 B", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'3 C';")]
+    estate.history = [r for i in range(5) for r in run_rows("2 B", 9 - i, f"2026-10-2{i}T01:00:00", duration=1000)]
+
+
+def test_a_job_that_overruns_comes_before_the_deadline_it_makes_others_miss(estate):
+    overrun_world(estate)
+    doc = report(estate)
+    assert doc["start_here"] == "2 B" and doc["start_because"] == "3 C cannot start until it finishes"
+    first, second = doc["attention"]
+    assert first["rule"] == "overrunning" and first["blocks"] == ["3 C"] and "3 C cannot start until it finishes" in first["message"]
+    assert second["rule"] == "deadline-missed" and second["caused_by"] == "2 B" and "It is waiting for 2 B" in second["message"]
+
+
+def test_a_deadline_missed_with_no_cause_keeps_its_rank(estate):
+    estate.config('[[expect]]\nenv = "prod"\njob = "Alone"\nby = "06:00"\n')
+    estate.jobs = [job("Alone", "2026-11-01T01:00:00"), job("Other", "2026-11-02T01:00:00", status=0)]
+    assert report(estate)["start_here"] == "Alone"

@@ -17,7 +17,7 @@ _clock = gantt.clock
 
 def _alert(a: dict) -> dict:
     return {k: a[k] for k in ("id", "env", "rule", "subject", "severity", "message", "next", "opened_at", "ack_note", "resolved_at", "at",
-                              "in_a_row", "blocks", "person") if a.get(k) not in (None, [], 0)}
+                              "in_a_row", "blocks", "person", "caused_by") if a.get(k) not in (None, [], 0)}
 
 
 def build(results: list[Result], alerts: list[dict], since: datetime, now: datetime, estate=None) -> dict:
