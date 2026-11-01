@@ -255,3 +255,14 @@ def test_a_new_kind_of_source_needs_no_change_in_the_report():
                {"refresh-failed"}, {}, 1)
     doc = build([r], [], datetime(2026, 11, 2), datetime(2026, 11, 2, 8))
     assert doc["activities"][0]["kind"] == "semantic_model_refresh" and doc["counts"]["failed"] == 1
+
+
+def test_a_refresh_running_far_longer_than_usual_is_overrunning():
+    runs = [run("2026-11-02T02:00:00", "running", took=None)] + [run(f"2026-10-2{i}T02:00:00", took=1200) for i in range(5)]
+    activity, [s] = judged(runs)
+    assert s.rule == "overrunning" and activity.state == "running" and "has been running for 360 min" in s.message and "usually takes 20 min" in s.message
+
+
+def test_a_refresh_running_for_about_as_long_as_usual_is_fine():
+    runs = [run("2026-11-02T07:50:00", "running", took=None)] + [run(f"2026-10-2{i}T02:00:00", took=1200) for i in range(5)]
+    assert judged(runs)[1] == []

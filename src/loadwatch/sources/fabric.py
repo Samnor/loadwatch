@@ -50,7 +50,7 @@ MODEL = "SemanticModel"
 JOB_STATUS = {"Completed": SUCCEEDED, "Failed": FAILED, "Cancelled": CANCELED, "InProgress": RUNNING, "NotStarted": RUNNING}
 # Power BI refresh history. A refresh in progress is reported as Unknown.
 REFRESH_STATUS = {"Completed": SUCCEEDED, "Failed": FAILED, "Disabled": CANCELED, "Unknown": RUNNING}
-RULES = {"fabric-failed", "ran-long", "overdue", "server-unreachable"}
+RULES = {"fabric-failed", "ran-long", "overdue", "overrunning", "server-unreachable"}
 PARALLEL = 6         # the API allows 500 calls a minute
 
 
@@ -242,6 +242,12 @@ def judge(source: str, item: dict, runs: list[dict], since: datetime, now: datet
                                   f"{last['start']}; it usually takes {typical / 60:.0f} min", url, last["start"]))
     starts = [datetime.fromisoformat(r["start"]) for r in runs if r["scheduled"]]     # a manual run says nothing about a schedule
     running = len(finished) < len(runs)
+    current = next((r for r in runs if r["status"] == RUNNING), None)
+    if current and len(usual) >= cfg.min_runs:
+        took, typical = (now - datetime.fromisoformat(current["start"])).total_seconds(), median(usual)
+        if took >= cfg.overrun_factor * typical and took - typical >= cfg.overrun_minutes * 60:
+            signals.append(Signal(source, "overrunning", name, "warning", f"{what} {name} has been running for {took / 60:.0f} min, since {current['start']}; "
+                                  f"it usually takes {typical / 60:.0f} min", url, current["start"]))
     if len(starts) > cfg.min_runs and not running:
         longest = max((a - b).total_seconds() for a, b in zip(starts, starts[1:]))
         quiet = (now - starts[0]).total_seconds()
