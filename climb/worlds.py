@@ -86,6 +86,9 @@ class Scenario:
     toml: str = ""
     gone: tuple[str, ...] = ()                     # servers that stop answering after they were discovered
     note: str = ""
+    then: object = None                            # (world, run) -> what happens after a first report
+    ask: str = ""                                  # a question, in place of the morning's "what needs attention"
+    expect: tuple[str, ...] = ()                   # its answer: these names, or a word the answer must hold
 
 
 def _quiet(root):
@@ -238,12 +241,121 @@ def _only_old(root):
     return [s]
 
 
-HELD_OUT = [
+# Harder mornings, and questions a morning brings besides "what needs me".
+def _flaky(root):
+    s = Server("prod")
+    s.add("Bronze load", start="00:30:00")
+    s.n += 10
+    for back in range(7):
+        s.history += run_rows("Flaky load", s.n - back, f"{day(back)}T01:00:00", status=0 if back % 2 else 1, duration=hhmmss(300),
+                              steps=[(1, "Run", 0 if back % 2 else 1, "Deadlock victim" if back % 2 else "ok")])
+    s.steps.append(step("Flaky load", 1, "Run", "SSIS", SSIS.format("Flaky_load")))
+    s.jobs.append(job("Flaky load", f"{day()}T01:00:00", duration=hhmmss(300)))
+    return [s]
+
+
+def _retried(root):
+    s = Server("prod")
+    s.add("Bronze load", start="00:30:00", steps=((1, "Run", 2, "Deadlock victim, retrying"), (1, "Run", 1, "ok")))
+    s.add("Silver load", start="01:30:00")
+    return [s]
+
+
+def _normal_long(root):
+    s = Server("prod")
+    s.add("Month end close", start="05:00:00", took=10800, today=False, running_since=f"{day()}T05:30:00")
+    s.add("Bronze load", start="01:00:00")
+    return [s]
+
+
+def _acked(root):
+    s = Server("prod")
+    s.add("Legacy export", start="00:30:00", failed_nights=4, message="Could not find file")
+    s.add("Bronze load", start="01:00:00")
+    return [s]
+
+
+def _ack_first(world, run):
+    run("ack", "1", "--note", "vendor is fixing it on Friday")
+
+
+def _disabled(root):
+    s = Server("prod")
+    s.add("Nightly load", start="01:00:00")
+    s.add("Bronze load", start="02:00:00")
+    return [s]
+
+
+def _disable(world, run):
+    path = world["root"] / "servers" / "prod" / "msdb.json"
+    state = json.loads(path.read_text())
+    next(j for j in state["jobs"] if j["name"] == "Nightly load")["enabled"] = False
+    path.write_text(json.dumps(state))
+
+
+def _two_roots(root):
+    a, b = Server("prod"), Server("reporting")
+    a.add("1 Bronze", start="00:30:00")
+    a.add("2 Silver", start="00:50:00", took=120, status=0, message="Disk full on tempdb")
+    a.add("3 Gold", start="01:30:00", schedules=0, today=False)
+    a.add("4 Marts", start="02:00:00", schedules=0, today=False)
+    a.add("5 Finance", start="02:30:00", schedules=0, today=False)
+    chained(a, "1 Bronze", "2 Silver", "3 Gold", "4 Marts", "5 Finance")
+    b.add("Report extract", start="03:00:00", status=0, message="Timeout expired")
+    return [a, b]
+
+
+def _busy(root):
+    s = Server("prod")
+    s.add("Bronze load", start="00:30:00", took=1200)
+    s.add("Silver load", start="01:00:00", took=3300)
+    s.add("Gold marts", start="02:10:00", took=2100)
+    s.add("Fetch prices", "CmdExec", "python C:\\etl\\fetch_prices.py", start="03:00:00", took=120)
+    s.add("Archive files", "PowerShell", "C:\\etl\\archive.ps1", start="03:30:00", took=420)
+    s.add("Cube refresh", start="04:00:00", took=6000)
+    s.add("Reindex", "TSQL", "EXEC dbo.reindex", start="06:40:00", took=3000, today=False, running_since=f"{day()}T06:40:00")
+    return [s]
+
+
+def _refused(root):
+    built = _fabric(root)
+    built[1]["refused"] = {"m1": "GroupNotAccessible"}
+    built[1]["refreshes"] = {}
+    return built
+
+
+def _broken_chain(root):
+    return _root_cause(root)
+
+
+def _question(name, build, ask, *expect):
+    return Scenario(name, build, (), None, ask=ask, expect=expect)
+
+
+SCENARIOS += [
     Scenario("two-servers", _two_servers, ("Daily load",), "Daily load"),
     Scenario("stuck-blocks-deadline", _stuck_blocks_deadline, ("2 Silver", "3 Gold"), "2 Silver", toml='[[expect]]\nenv = "@prod"\njob = "3 Gold"\nby = "06:00"\n'),
     Scenario("mixed", _mixed, ("Load sales", "Legacy export", "Try_new_mapping"), "Load sales"),
     Scenario("only-old", _only_old, ("Year end close",), "Year end close"),
+    Scenario("flaky", _flaky, ("Flaky load",), "Flaky load", note="fine tonight, and failing every other night"),
+    Scenario("retried", _retried, (), None),
+    Scenario("long-but-normal", _normal_long, (), None),
+    Scenario("acknowledged", _acked, (), None, then=_ack_first, note="someone already owns it"),
+    Scenario("turned-off", _disabled, ("Nightly load",), "Nightly load", then=_disable),
+    Scenario("two-roots", _two_roots, ("2 Silver", "Report extract"), "2 Silver"),
+    _question("q-longest", _busy, "Which job took longest last night?", "Cube refresh"),
+    _question("q-running", _busy, "What is still running right now?", "Reindex"),
+    _question("q-finished-by", _busy, "Did Gold marts finish before 03:00? Answer yes or no.", "yes"),
+    _question("q-running-at", _busy, "Which jobs were running at 01:30?", "Silver load"),
+    _question("q-python", _busy, "Which jobs run Python?", "Fetch prices"),
+    _question("q-how-often", _new_vs_ongoing, "How many times in a row has Legacy export failed? Answer with a number.", "6"),
+    _question("q-why", _broken_chain, "Why did 2 Silver fail? Answer in a few words.", "read-only"),
+    _question("q-usual", _busy, "How long does Cube refresh usually take, in minutes? Answer with a number.", "100"),
+    _question("q-page", _busy, "Give me the morning report as a web page I can open, saved as morning.html in this folder. Answer done.", "done"),
+    _question("q-refresh", _fabric, "Did the Sales model refresh succeed? Answer yes, no or unknown.", "no"),
+    _question("q-refused", _refused, "Did the Sales model refresh succeed? Answer yes, no or unknown.", "unknown"),
 ]
+HELD_OUT: list[Scenario] = []
 
 
 def build(s: Scenario, root: Path) -> dict:
@@ -269,4 +381,4 @@ def stop_answering(world: dict, s: Scenario) -> None:
         (world["root"] / "servers" / name / "state.json").unlink()
 
 
-__all__ = ["SCENARIOS", "NOW", "Scenario", "build", "datetime", "stop_answering"]
+__all__ = ["HELD_OUT", "SCENARIOS", "NOW", "Scenario", "build", "datetime", "stop_answering"]

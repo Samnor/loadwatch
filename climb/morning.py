@@ -47,6 +47,10 @@ anything. Things that fixed themselves do not need attention, and "nothing" is a
 End your reply with exactly these two lines, using the job, package, model or server names:
 ATTENTION: name, name, name   (or ATTENTION: none)
 FIRST: name   (or FIRST: none)"""
+ASK = """It's the morning and you're on call for our data platform: SQL Server Agent jobs, and Fabric. The `loadwatch` command is
+installed; start with `loadwatch --help`. Do not change anything on any server. {ask}
+End your reply with exactly this one line, using the job or model names (comma separated if there are several):
+ANSWER: your answer"""
 TOOLS = ["Bash(loadwatch:*)", "Bash(ssisbliss:*)"]
 
 
@@ -70,7 +74,24 @@ def answer(text: str) -> tuple[list[str], str | None] | None:
     return names, None if one.lower() in ("none", "") else one
 
 
-def grade(s: worlds.Scenario, text: str) -> dict:
+def grade_question(s: worlds.Scenario, text: str, world: Path | None) -> dict:
+    lines = [re.sub(r"[*`]", "", x).strip() for x in text.splitlines()]
+    found = [x for x in lines if re.match(r"(?i)^answer\s*:", x)]
+    if not found:
+        return {"set": False, "first": False, "points": 0, "note": "no ANSWER line"}
+    said = found[-1].split(":", 1)[1].strip()
+    if s.name == "q-page":
+        page = (world / "work" / "morning.html") if world else None
+        right = bool(page and page.is_file() and "<svg" in page.read_text(errors="replace"))
+    else:
+        names = [n.strip() for n in re.split(r"[,;]", said) if n.strip()]
+        right = all(any(same(n, real) for n in names) for real in s.expect) and all(any(same(n, real) for real in s.expect) for n in names)
+    return {"set": right, "first": right, "points": 100 if right else 0, "note": f"said {said[:90]}"}
+
+
+def grade(s: worlds.Scenario, text: str, world: Path | None = None) -> dict:
+    if s.ask:
+        return grade_question(s, text, world)
     got = answer(text)
     if got is None:
         return {"set": False, "first": False, "points": 0, "note": "no ATTENTION and FIRST lines"}
@@ -93,6 +114,13 @@ def run_env(world: dict, bin_dir: Path) -> dict:
 def prepare(s: worlds.Scenario, root: Path, bin_dir: Path) -> dict:
     world = worlds.build(s, root)
     subprocess.run([bin_dir / "loadwatch", "discover"], cwd=world["work"], env=run_env(world, bin_dir), capture_output=True)
+    if s.then:
+        env = run_env(world, bin_dir)
+
+        def run(*args: str) -> None:
+            subprocess.run([bin_dir / "loadwatch", *args], cwd=world["work"], env=env, capture_output=True)
+        run("report")
+        s.then(world, run)
     worlds.stop_answering(world, s)
     return world
 
@@ -163,7 +191,7 @@ def regrade(label: str) -> None:
         d = d or next((p for p in (CLIMB / "runs" / label / r["agent"].replace(":", "-")).glob(f"{r['scenario']}-*")
                        if json.loads((p / "grade.json").read_text()).get("final") == r["final"]))
         steps, final, _, _ = steps_of(d / "transcript.jsonl", backend)
-        g = grade(s, final)
+        g = grade(s, final, d / "world")
         r["peeked"] = peeks(d / "transcript.jsonl", backend)
         r.update({k: g[k] for k in ("set", "first", "points", "note")})
         r["score"] = 0 if r["peeked"] else g["points"] - min(STEP_CAP, steps) if g["points"] else 0
@@ -174,12 +202,13 @@ def run_one(s: worlds.Scenario, agent: str, i: int, out: Path, bin_dir: Path, bu
     d = out / agent.replace(":", "-") / f"{s.name}-{i}"
     world = prepare(s, d / "world", bin_dir)
     backend, _, model = agent.partition(":")
+    prompt = ASK.format(ask=s.ask) if s.ask else PROMPT
     if backend == "claude":
-        cmd = ["claude", "-p", PROMPT, "--output-format", "stream-json", "--verbose", "--model", model, "--setting-sources", "project",
+        cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--model", model, "--setting-sources", "project",
                "--max-budget-usd", str(budget), "--allowedTools", *TOOLS]
     else:
         cmd = ["codex", "exec", "-m", model, "--json", "--ephemeral", "--skip-git-repo-check", "-s", "workspace-write",
-               "--add-dir", str(d / "world"), "-c", 'shell_environment_policy.inherit="all"', PROMPT]
+               "--add-dir", str(d / "world"), "-c", 'shell_environment_policy.inherit="all"', prompt]
     started = time.time()
     transcript = d / "transcript.jsonl"
     try:
@@ -188,7 +217,7 @@ def run_one(s: worlds.Scenario, agent: str, i: int, out: Path, bin_dir: Path, bu
     except subprocess.TimeoutExpired:
         pass
     steps, final, cost, tokens = steps_of(transcript, backend)
-    g = grade(s, final)
+    g = grade(s, final, d / "world")
     peeked = peeks(transcript, backend)
     points = 0 if peeked else g["points"] - min(STEP_CAP, steps) if g["points"] else 0
     r = {"scenario": s.name, "agent": agent, **g, "score": points, "steps": steps, "cost_usd": cost, "tokens": tokens, "peeked": peeked,
@@ -210,13 +239,25 @@ def install(commit: str, out: Path) -> Path:
     return tree / ".venv/bin"
 
 
+def guard() -> None:
+    """What is measured is what was tested: nothing uncommitted, and every test passing."""
+    dirty = subprocess.run(["git", "status", "--short"], cwd=REPO, capture_output=True, text=True).stdout
+    if dirty.strip():
+        sys.exit(f"not measured: uncommitted changes\n{dirty}")
+    p = subprocess.run([REPO / ".venv/bin/python", "-m", "pytest", "-q"], cwd=REPO, capture_output=True, text=True)
+    if p.returncode:
+        sys.exit("not measured: tests fail\n" + p.stdout[-1500:])
+
+
 def evaluate(label: str, commit: str | None, agents: list[str], repeats: int, jobs: int, budget: float, held_out: bool, only_report: bool) -> dict:
+    if commit is None:
+        guard()
     commit = commit or subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     out = CLIMB / "runs" / label
     out.mkdir(parents=True, exist_ok=True)
     bin_dir = install(commit, out)
     scenarios = worlds.HELD_OUT if held_out else worlds.SCENARIOS
-    report = {s.name: report_score(s, out / "report" / s.name, bin_dir) for s in scenarios}
+    report = {s.name: report_score(s, out / "report" / s.name, bin_dir) for s in scenarios if not s.ask}
     results = []
     if not only_report:
         work = [(s, a, i) for a in agents for s in scenarios for i in range(repeats)]
@@ -257,7 +298,7 @@ def verdict(new: dict, best: dict) -> dict:
 
 def table(doc: dict) -> str:
     rs = doc["results"]
-    scenarios = list(doc["report"])
+    scenarios = list(dict.fromkeys([*doc["report"], *(r["scenario"] for r in rs)]))
     lines = [f"## {doc['label']} ({doc['commit'][:8]})", "", f"report score {sum(r['points'] for r in doc['report'].values())} / {100 * len(doc['report'])}", ""]
     lines += ["| scenario | report | first in report | " + " | ".join(a.split(":")[1] for a in AGENTS) + " |", "|---|---|---|" + "---|" * len(AGENTS)]
     for s in scenarios:
@@ -265,7 +306,7 @@ def table(doc: dict) -> str:
         for a in AGENTS:
             mine = [r for r in rs if r["scenario"] == s and r["agent"] == a]
             cells.append(f"{sum(r['set'] for r in mine)}s {sum(r['first'] for r in mine)}f /{len(mine)} · {sum(r['steps'] for r in mine) // max(1, len(mine))}st · {sum(r['score'] for r in mine) // max(1, len(mine))}")
-        rep = doc["report"][s]
+        rep = doc["report"].get(s, {"points": "-", "first": "-"})
         lines.append(f"| {s} | {rep['points']} | {str(rep['first'])[:28]} | " + " | ".join(cells) + " |")
     total = {a: [r for r in rs if r["agent"] == a] for a in AGENTS}
     for a, mine in total.items():

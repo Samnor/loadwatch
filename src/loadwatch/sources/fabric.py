@@ -163,6 +163,9 @@ class FakeFabric:
         return self.state.get("jobs", {}).get(item, [])
 
     def refreshes(self, workspace: str, model: str) -> list[dict]:
+        refused = self.state.get("refused", {}).get(model)
+        if refused:
+            raise ApiError(401, refused)
         return self.state.get("refreshes", {}).get(model, [])
 
 
