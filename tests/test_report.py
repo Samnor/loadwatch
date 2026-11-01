@@ -295,5 +295,6 @@ def test_a_job_that_overruns_comes_before_the_deadline_it_makes_others_miss(esta
 
 def test_a_deadline_missed_with_no_cause_keeps_its_rank(estate):
     estate.config('[[expect]]\nenv = "prod"\njob = "Alone"\nby = "06:00"\n')
-    estate.jobs = [job("Alone", "2026-11-01T01:00:00"), job("Other", "2026-11-02T01:00:00", status=0)]
-    assert report(estate)["start_here"] == "Alone"
+    estate.jobs = [job("Alone", "2026-11-01T01:00:00"), job("Other", "2026-11-02T01:00:00")]
+    doc = report(estate)
+    assert doc["start_here"] == "Alone" and "caused_by" not in doc["attention"][0]
