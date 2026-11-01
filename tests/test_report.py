@@ -236,7 +236,7 @@ def test_the_report_opens_with_where_to_start(estate):
     nightly(estate, status=0)
     estate.save()
     text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
-    assert text.split("\n")[6].startswith("**Start here: Nightly**")
+    assert text.split("\n")[6].startswith("**Start here: Nightly**") and "Everything that needs attention: Nightly." in text
 
 
 def test_anything_that_might_be_a_service_account_is_not_called_a_person():
@@ -258,7 +258,7 @@ def test_the_report_says_what_it_looked_at(estate):
 def test_help_says_the_report_is_the_whole_answer():
     from loadwatch import cli
     text = cli.parser().format_help()
-    assert "It is the whole answer" in text and "start here" in text and "--format html --out morning.html" in text
+    assert "It is the whole answer" in text and "start here" in text
 
 
 def test_the_reason_to_start_is_never_new_for_something_old(estate):

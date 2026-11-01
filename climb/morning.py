@@ -20,7 +20,8 @@ The rule, fixed before the first measurement:
 
 Added on 2026-11-02, before the measurements it applies to, because with 144 runs one scenario cannot move the mean by 5 and the report
 score had reached its maximum: also kept when a scenario that was mostly wrong (at most 1 of 4 right) becomes mostly right (at least 3 of
-4) and agents are no worse. The verdict says so.
+4) and agents are no worse. The verdict says so. And later the same day, also before measuring: the gain needed is half a scenario, as
+it was at 5 points with 10 scenarios, not a fixed 5, which had become over three times harder. z >= 1.64 stays.
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ sys.path.insert(0, str(CLIMB))
 import worlds  # noqa: E402
 
 AGENTS = ["claude:haiku", "codex:gpt-6-luna"]
-MIN_GAIN, Z, NOT_WORSE = 5.0, 1.64, 1.0
+MIN_GAIN, Z, NOT_WORSE = 5.0, 1.64, 1.0     # 5 was half a scenario out of 10: see verdict()
 STEP_CAP = 30
 SSISBLISS = REPO.parent / "Onpremtools"
 PROMPT = """It's the morning and you're on call for our data platform: SQL Server Agent jobs, and Fabric. The `loadwatch` command is
@@ -317,7 +318,8 @@ def fixed(new: dict, best: dict) -> list[str]:
 def verdict(new: dict, best: dict) -> dict:
     stats = paired(new, best)
     before, after = (sum(r["points"] for r in d["report"].values()) for d in (best, new))
-    if stats["gain"] >= MIN_GAIN and stats["z"] >= Z:
+    half_a_scenario = 50 / max(1, len({r["scenario"] for r in new["results"]}))
+    if stats["gain"] >= half_a_scenario and stats["z"] >= Z:
         why = "agents did better"
     elif after > before and stats["z"] >= -NOT_WORSE:
         why = "the report is better and agents are no worse"

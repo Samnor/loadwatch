@@ -401,7 +401,7 @@ SCENARIOS += [
     Scenario("agent-stopped", _agent_stopped, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "prod"), "prod",
              note="nothing failed; every job on one server stopped starting; Cube refresh is still inside its grace period"),
     Scenario("common-cause", _common_cause, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh"), "Bronze load",
-             note="six jobs, one full transaction log", also=("transaction log",)),
+             note="six jobs, one full transaction log", also=("transaction log", "DW")),
     Scenario("big-morning", _big, ("Finance load", "Customer load"), "Finance load"),
     _question("q-one-cause", _common_cause, "Do last night's failures share one cause? Answer yes or no.", "yes"),
     _question("q-what-changed", _deployed, "Silver load failed. Did anyone deploy to it just before? Answer with the person's name, or none.", "bob"),
