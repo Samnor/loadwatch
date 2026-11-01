@@ -3,7 +3,7 @@ every source returns, so a new source shows up here without a change."""
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from . import gantt
 from .activity import Result, priority, why_first
@@ -115,27 +115,19 @@ def _section(lines: list[str], title: str, alerts: list[dict]) -> None:
     lines.append("")
 
 
-def finished(run: dict) -> str:
-    if run.get("status") == "running":
-        return "still running"
-    if not run.get("start") or run.get("duration_s") is None:
-        return "-"
-    return (datetime.fromisoformat(run["start"]) + timedelta(seconds=run["duration_s"])).strftime("%H:%M:%S")
-
-
 def _table(lines: list[str], doc: dict) -> None:
     several = len(doc["sources"]) > 1
     lines += [f"## What ran ({doc['ran']})", ""]
     if not doc["activities"]:
         lines += ["Nothing has run in this period.", ""]
         return
-    head = ["State", *(["Source"] if several else []), "Name", "Runs", "Last start", "Finished", "Took", "Usual", "What it runs"]
+    head = ["State", *(["Source"] if several else []), "Name", "Runs", "Last start", "Took", "Usual", "What it runs"]
     lines += ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for a in doc["activities"]:
         last = a["runs"][0] if a["runs"] else {}
         count = f"{len(a['runs'])}{'+' if a['more_runs'] else ''}"
         cells = [a["state"].replace("missing", "did not run"), *([a["source"]] if several else []), a["name"], count, (last.get("start") or "-").replace("T", " "),
-                 finished(last), _clock(last.get("duration_s")), _clock(a["usual_s"]), a["what"]]
+                 _clock(last.get("duration_s")), _clock(a["usual_s"]), a["what"]]
         lines.append("| " + " | ".join(str(c).replace("|", "/") for c in cells) + " |")
     lines.append("")
 

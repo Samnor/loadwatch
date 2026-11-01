@@ -86,7 +86,7 @@ def says(s: worlds.Scenario, said: str, world: Path | None) -> bool:
         return s.expect[0] in words
     if s.expect[0].lower() in ("yes", "no", "unknown"):
         return bool(words) and words[0] == s.expect[0].lower()
-    if s.name in ("q-why", "q-what-changed"):
+    if s.name in ("q-why", "q-what-changed", "q-which-server"):
         return s.expect[0].replace("-", " ") in _norm(said)
     text = _norm(said)
     if not all(_norm(real) in text for real in s.expect):

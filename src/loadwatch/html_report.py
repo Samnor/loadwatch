@@ -54,15 +54,14 @@ def _alerts(alerts: list[dict]) -> str:
 
 
 def _table(doc: dict) -> str:
-    from .report import finished
     rows = []
     for a in doc["activities"]:
         last = a["runs"][0] if a["runs"] else {}
         count = f"{len(a['runs'])}{'+' if a['more_runs'] else ''}"
         rows.append(f'<tr><td class="n">{STATES.get(a["state"], escape(a["state"]))}</td><td>{escape(a["name"])}</td><td class="n">{count}</td>'
-                    f'<td class="n">{escape((last.get("start") or "-").replace("T", " "))}</td><td class="n">{finished(last)}</td><td class="n">{gantt.clock(last.get("duration_s"))}</td>'
+                    f'<td class="n">{escape((last.get("start") or "-").replace("T", " "))}</td><td class="n">{gantt.clock(last.get("duration_s"))}</td>'
                     f'<td class="n">{gantt.clock(a["usual_s"])}</td><td>{escape(a["what"])}</td></tr>')
-    head = "".join(f"<th>{h}</th>" for h in ("State", "Name", "Runs", "Last start", "Finished", "Took", "Usual", "What it runs"))
+    head = "".join(f"<th>{h}</th>" for h in ("State", "Name", "Runs", "Last start", "Took", "Usual", "What it runs"))
     return f'<section class="card scroll"><table><tr>{head}</tr>{"".join(rows)}</table></section>'
 
 

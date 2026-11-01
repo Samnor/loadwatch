@@ -406,6 +406,72 @@ SCENARIOS += [
     _question("q-one-cause", _common_cause, "Do last night's failures share one cause? Answer yes or no.", "yes"),
     _question("q-what-changed", _deployed, "Silver load failed. Did anyone deploy to it just before? Answer with the person's name, or none.", "bob"),
 ]
+# Harder again: written after the first seven climbs, to steer the last three.
+def _utc(back, hour):
+    return f"{day(back)}T{hour:02d}:00:00Z"
+
+
+def _fabric_stopped(root):
+    s = Server("prod")
+    s.add("Bronze load")
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "m1", "displayName": "Sales model", "type": "SemanticModel"}]
+    refreshes = [{"status": "Completed", "refreshType": "Scheduled", "startTime": _utc(b, 5), "endTime": f"{day(b)}T05:20:00Z"} for b in range(5, 12)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "refreshes": {"m1": refreshes}}
+
+
+def _fabric_stuck(root):
+    s = Server("prod")
+    s.add("Bronze load")
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "m1", "displayName": "Sales model", "type": "SemanticModel"}]
+    refreshes = [{"status": "Unknown", "refreshType": "Scheduled", "startTime": _utc(0, 2)}]
+    refreshes += [{"status": "Completed", "refreshType": "Scheduled", "startTime": _utc(b, 2), "endTime": f"{day(b)}T02:20:00Z"} for b in range(1, 8)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "refreshes": {"m1": refreshes}}
+
+
+def _disabled_link(root):
+    s = Server("prod")
+    s.add("1 Bronze", start="00:30:00")
+    s.add("2 Silver", start="01:00:00")
+    s.add("3 Gold", start="01:30:00", schedules=0, today=False)
+    s.add("4 Marts", start="02:00:00", schedules=0, today=False)
+    chained(s, "1 Bronze", "2 Silver", "3 Gold", "4 Marts")
+    next(j for j in s.jobs if j["name"] == "3 Gold")["enabled"] = False
+    return [s]
+
+
+def _creeping(root):
+    s = Server("prod")
+    s.add("Bronze load", start="00:30:00")
+    s.n += 12
+    for back in range(10):
+        s.history += run_rows("Orders load", s.n - back, f"{day(back)}T01:00:00", duration=hhmmss(5400 - back * 480), steps=[(1, "Run", 1, "ok")])
+    s.steps.append(step("Orders load", 1, "Run", "SSIS", SSIS.format("Orders_load")))
+    s.jobs.append(job("Orders load", f"{day()}T01:00:00", duration=hhmmss(5400)))
+    return [s]
+
+
+def _evening(root):
+    s = Server("prod")
+    s.add("Bronze load", start="01:00:00")
+    s.n += 3
+    s.history += run_rows("Evening extract", s.n, f"{day(1)}T20:00:00", status=0, duration=hhmmss(60), steps=[(1, "Run", 0, "Timeout expired")])
+    s.history += run_rows("Evening extract", s.n - 1, f"{day(2)}T20:00:00", duration=hhmmss(60), steps=[(1, "Run", 1, "ok")])
+    s.steps.append(step("Evening extract", 1, "Run", "TSQL", "EXEC x"))
+    s.jobs.append(job("Evening extract", f"{day(1)}T20:00:00", status=0, duration=hhmmss(60)))
+    s.add("Morning extract", start="06:00:00")
+    return [s]
+
+
+SCENARIOS += [
+    Scenario("fabric-stopped", _fabric_stopped, ("Sales model",), "Sales model", note="its schedule stopped five days ago"),
+    Scenario("fabric-stuck", _fabric_stuck, ("Sales model",), "Sales model", note="refreshing for six hours, usually 20 minutes"),
+    Scenario("disabled-link", _disabled_link, ("3 Gold",), "3 Gold", note="a disabled job in the middle of a chain"),
+    Scenario("creeping", _creeping, ("Orders load",), "Orders load", note="slower every night, with no one bad night"),
+    _question("q-since", _evening, "Which jobs failed since 18:00 yesterday? Answer with names, or none.", "Evening extract"),
+    _question("q-which-server", _two_servers, "On which server did Daily load fail?", "prod"),
+]
 HELD_OUT: list[Scenario] = []
 
 
