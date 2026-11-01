@@ -17,6 +17,7 @@ from .observe import Observation
 
 SCRIPT_STEPS = {"PowerShell", "CmdExec"}
 FLAKY_RUNS, FLAKY_FAILURES = 10, 3      # failed this many of the last runs, and succeeded last
+SILENT_JOBS, SILENT_SHARE = 3, 0.6      # this many overdue, and this share of the scheduled jobs: it is the server
 # An account a schedule runs as, not a person. Anything that might be one counts as one: calling a production failure a test is the
 # mistake to avoid, and ssisbliss knows the real accounts (run_as_accounts) but no command says them yet.
 _SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|\$$|(?:^|[\\._-])(?:svc|srv|service|sa|sql|agent|etl|batch|app|system)", re.I)
@@ -25,7 +26,7 @@ _OUTPUT_ERROR = re.compile(r"Traceback \(most recent call last\)|\bException\b|\
 # no answer from a server is not good news.
 RULES = {"server-unreachable": None, "blind-spot": None, "job-failed": "jobs", "deadline-missed": "jobs",
          "missed-schedule": "jobs", "job-unscheduled": "jobs", "overrunning": "history", "overdue": "history",
-         "ran-long": "history", "flaky": "history", "step-failed-silently": "history",
+         "ran-long": "history", "flaky": "history", "nothing-started": "history", "step-failed-silently": "history",
          "script-output-error": "history", "slower": "history", "chain-stopped": "chains", "chain-missing-job": "chains",
          "ssis-failed": "executions", "health": "health"}
 
@@ -235,6 +236,21 @@ def _silent(o: Observation, v: dict, run: dict) -> list[Signal]:
     return out
 
 
+def _silence(o: Observation, signals: list[Signal]) -> list[Signal]:
+    """Most of a server's scheduled jobs have stopped starting: nothing failed, and that is the finding, not each job."""
+    late = [s for s in signals if s.rule == "overdue"]
+    scheduled = sum(bool(v["enabled"] and v.get("schedules")) for v in o.jobs)
+    if len(late) < SILENT_JOBS or len(late) < SILENT_SHARE * scheduled:
+        return []
+    starts = [(v.get("last_run") or {}).get("start") for v in o.jobs if v["name"] in {s.subject for s in late}]
+    since = max(filter(None, starts), default="?")
+    name = o.server or o.env
+    for s in late:
+        s.caused_by = name
+    return [Signal(o.env, "nothing-started", name, "critical", f"{len(late)} of {scheduled} scheduled jobs on {name} have stopped starting, the last at "
+                   f"{since}, and none of them failed. Check that SQL Server Agent is running there", "ssisbliss jobs --brief", since)]
+
+
 def _chains(o: Observation) -> list[Signal]:
     out = []
     for c in o.chains:
@@ -278,6 +294,7 @@ def evaluate(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime
         s = Signal(o.env, "server-unreachable", o.env, "critical", f"could not read {o.env}: {o.unread['jobs'][:300]}")
         return [s], {"server-unreachable", "blind-spot"}, memory
     signals, remembered = _jobs(o, cfg, memory, now)
+    signals += _silence(o, signals)
     views = {v["name"]: v for v in o.jobs}
     signals += [s for e in cfg.expect if e.env == o.env if (s := _deadline(o, e, views.get(e.job), now))]
     if o.read("chains"):

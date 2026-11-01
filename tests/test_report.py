@@ -312,3 +312,23 @@ def test_one_bad_night_is_not_flaky(estate):
     estate.jobs = [job("Fine", "2026-11-02T01:00:00")]
     estate.history = run_rows("Fine", 3, "2026-11-02T01:00:00") + run_rows("Fine", 2, "2026-11-01T01:00:00", status=0) + run_rows("Fine", 1, "2026-10-31T01:00:00")
     assert report(estate)["attention"] == []
+
+
+def many_days(name, last="2026-11-01"):
+    days = ["2026-11-01", "2026-10-31", "2026-10-30", "2026-10-29", "2026-10-28", "2026-10-27"]
+    return [r for i, d in enumerate(days) for r in run_rows(name, 20 - i, f"{d}T01:00:00")]
+
+
+def test_when_most_jobs_stop_starting_the_finding_is_the_server(estate):
+    names = ("A", "B", "C", "D")
+    estate.jobs = [job(n, "2026-11-01T01:00:00") for n in names]
+    estate.history = [r for n in names for r in many_days(n)]
+    doc = report(estate, "2026-11-03T08:00:00")
+    assert doc["attention"][0]["rule"] == "nothing-started" and "Check that SQL Server Agent is running" in doc["attention"][0]["message"]
+    assert doc["start_because"].startswith("jobs have stopped starting") and all(a["caused_by"] for a in doc["attention"][1:])
+
+
+def test_one_overdue_job_is_only_that_job(estate):
+    estate.jobs = [job("A", "2026-11-01T01:00:00"), job("B", "2026-11-03T01:00:00"), job("C", "2026-11-03T01:00:00")]
+    estate.history = many_days("A")
+    assert [a["rule"] for a in report(estate, "2026-11-03T08:00:00")["attention"]] == ["overdue"]
