@@ -1,0 +1,32 @@
+[project]
+name = "loadwatch"
+version = "0.0.1"
+description = "Watch SQL Server data platforms over time: failed, late, slow and silently broken SQL Agent jobs. Built on ssisbliss."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# An archive of one commit: pip takes it without git on the machine, and a commit keeps working when ssisbliss moves on.
+dependencies = ["ssisbliss @ https://github.com/Samnor/ssisbliss/archive/d446fbcd558f46d5240042363011a2d4fd3d26df.zip"]
+
+[project.scripts]
+loadwatch = "loadwatch.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+# Working on both: `uv sync` uses the checkout next to this one. pip does not read this.
+[tool.uv.sources]
+ssisbliss = { path = "../Onpremtools", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loadwatch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

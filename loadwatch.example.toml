@@ -1,0 +1,22 @@
+# All of this is optional: with no file at all, loadwatch works out what to watch. See `loadwatch discover`.
+# Listing environments (names from ssisbliss.toml) watches those instead of discovering anything.
+# environments = ["prod"]
+# ssisbliss_config = "ssisbliss.toml"     # default: where ssisbliss finds it
+# db = "~/.loadwatch/loadwatch.db"        # alerts and what each job looked like at the last pass
+# heartbeat = "https://..."               # pinged after every pass, so that a dead monitor is noticed
+# The webhook comes from $LOADWATCH_WEBHOOK: a Slack or Teams incoming webhook URL is a secret.
+
+# Defaults:
+# window_hours = 24        how far back a failed package execution counts
+# overrun_factor = 2.0     a run is too long at this many times its usual duration...
+# overrun_minutes = 10     ...and at least this much longer than usual
+# min_runs = 3             finished runs needed to know what is usual
+# grace_minutes = 30       after a job's due time before it counts as missed
+# remind_hours = 12        an alert nobody acknowledged is sent again after this long
+
+# What the business needs, which no server knows. On the server's clock.
+[[expect]]
+env = "SQL01\\PROD"       # the server, as `loadwatch discover` shows it
+job = "1 BRONZE_API"
+by = "06:00"
+days = ["mon", "tue", "wed", "thu", "fri"]
