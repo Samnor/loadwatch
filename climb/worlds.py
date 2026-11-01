@@ -66,9 +66,9 @@ class Server:
                                "execution_path": "", "message_source_name": "Load", "package_name": p, "package_path": "\\Package\\Load",
                                "message": f"Load:Error: {m}"}] for i, p, _, m in self.executions}
         if self.deployed_by:
-            from ssisbliss.ssis.fake import ispac
+            from ssisbliss.ssis.fake import dtsx, ispac
             who, _ = self.deployed_by
-            cat.add_project("ETL", "ETL", ispac("ETL", {"Silver_load.dtsx": b"<x/>"}), deployed_by=who)
+            cat.add_project("ETL", "ETL", ispac("ETL", {"Silver_load.dtsx": dtsx("Silver_load.dtsx")}), deployed_by=who)
         cat.save(d)
         maintenance = job("SSIS Server Maintenance Job", f"{day()}T00:00:10")
         (d / "msdb.json").write_text(json.dumps({"server_name": cat.info.server_name, "jobs": [*self.jobs, maintenance], "steps": self.steps,
