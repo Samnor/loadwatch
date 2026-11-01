@@ -407,7 +407,9 @@ def test_a_disabled_job_in_a_chain_is_named_and_not_the_job_before_it(estate):
 
 def durations(estate, name, minutes):
     estate.jobs = [job(name, "2026-11-02T01:00:00")]
-    estate.history = [r for i, m in enumerate(minutes) for r in run_rows(name, 30 - i, f"2026-10-{31 - i:02d}T01:00:00", duration=m // 60 * 10000 + m % 60 * 100)]
+    from datetime import date, timedelta
+    days = [(date(2026, 11, 2) - timedelta(days=i)).isoformat() for i in range(len(minutes))]
+    estate.history = [r for i, m in enumerate(minutes) for r in run_rows(name, 30 - i, f"{days[i]}T01:00:00", duration=m // 60 * 10000 + m % 60 * 100)]
 
 
 def test_a_job_slowing_a_little_every_night_is_creeping(estate):
