@@ -237,3 +237,10 @@ def test_the_report_opens_with_where_to_start(estate):
     estate.save()
     text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
     assert text.split("\n")[4].startswith("**Start here: Nightly**")
+
+
+def test_anything_that_might_be_a_service_account_is_not_called_a_person():
+    from loadwatch.rules import _SERVICE
+    for account in ("CORP\\svc_etl", "CORP\\sql-agent", "NT SERVICE\\SQLAgent$PROD", "CORP\\SQL01$", "CORP\\etl.batch", "sa", "agent"):
+        assert _SERVICE.search(account), account
+    assert not _SERVICE.search("CORP\\dave") and not _SERVICE.search("LAB\\anna.berg")

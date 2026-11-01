@@ -16,7 +16,9 @@ from .config import DAYS, Config, Expectation
 from .observe import Observation
 
 SCRIPT_STEPS = {"PowerShell", "CmdExec"}
-_SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|SQLAgent|\$$", re.I)       # an account a schedule runs as, not a person
+# An account a schedule runs as, not a person. Anything that might be one counts as one: calling a production failure a test is the
+# mistake to avoid, and ssisbliss knows the real accounts (run_as_accounts) but no command says them yet.
+_SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|\$$|(?:^|[\\._-])(?:svc|srv|service|sa|sql|agent|etl|batch|app|system)", re.I)
 _OUTPUT_ERROR = re.compile(r"Traceback \(most recent call last\)|\bException\b|\bFullyQualifiedErrorId\b|\bERROR:", re.I)
 # The part of a pass a rule reads. A rule whose part could not be read did not look, so it cannot clear an alert:
 # no answer from a server is not good news.
