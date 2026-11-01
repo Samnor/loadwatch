@@ -356,3 +356,41 @@ def test_different_errors_are_different_causes(estate):
 def test_the_generic_message_is_not_a_shared_cause(estate):
     failing_with(estate, ["A", "B", "C"], "The job failed.")
     assert all(a["rule"] == "job-failed" for a in report(estate)["attention"])
+
+
+def deployed_world(estate, deployed_at_lsn):
+    from ssisbliss.ssis.fake import dtsx, ispac
+    from test_rules import _failed_execution
+    cat = estate.catalog()
+    cat.next_lsn = deployed_at_lsn
+    cat.add_project("F", "P", ispac("P", {"Main.dtsx": dtsx("Main.dtsx")}), deployed_by="LAB\\bob")
+    cat.save()
+    _failed_execution(cat, 71)
+    cat = estate.catalog()
+    cat.execution_rows[0]["caller_name"] = "NT SERVICE\\SQLAgent"
+    cat.save()
+    return cat
+
+
+def test_a_failure_says_who_deployed_just_before_it(estate):
+    from datetime import datetime, timedelta
+    now = datetime.now().replace(microsecond=0)
+    run = now - timedelta(hours=1)
+    ticks = int((run - datetime(2026, 10, 1)).total_seconds() // 3600) - 3
+    deployed_world(estate, ticks - 1)
+    estate.jobs = [job("Silver", run.isoformat(), status=0)]
+    estate.history = run_rows("Silver", 5, run.isoformat(), status=0, steps=[(1, "Run", 0, "Failed. Execution ID: 71")])
+    a = report(estate, now.isoformat())["attention"][0]
+    assert a["deployed_by"] == "LAB\\bob" and "LAB\\bob deployed P at" in a["message"]
+    assert report(estate, now.isoformat())["start_because"] == "LAB\\bob deployed it just before it failed"
+
+
+def test_an_old_deploy_is_not_blamed(estate):
+    from datetime import datetime, timedelta
+    now = datetime.now().replace(microsecond=0)
+    run = now - timedelta(hours=1)
+    deployed_world(estate, 5)     # weeks ago
+    estate.jobs = [job("Silver", run.isoformat(), status=0)]
+    estate.history = run_rows("Silver", 5, run.isoformat(), status=0, steps=[(1, "Run", 0, "Failed. Execution ID: 71")])
+    a = report(estate, now.isoformat())["attention"][0]
+    assert "deployed_by" not in a and " deployed " not in a["message"]

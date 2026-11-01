@@ -19,6 +19,7 @@ SCRIPT_STEPS = {"PowerShell", "CmdExec"}
 FLAKY_RUNS, FLAKY_FAILURES = 10, 3      # failed this many of the last runs, and succeeded last
 SILENT_JOBS, SILENT_SHARE = 3, 0.6      # this many overdue, and this share of the scheduled jobs: it is the server
 SHARED_JOBS = 3                         # this many jobs with one error: it is one cause
+DEPLOY_HOURS = 24                       # a deploy this long before a failure may have caused it
 # An account a schedule runs as, not a person. Anything that might be one counts as one: calling a production failure a test is the
 # mistake to avoid, and ssisbliss knows the real accounts (run_as_accounts) but no command says them yet.
 _SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|\$$|(?:^|[\\._-])(?:svc|srv|service|sa|sql|agent|etl|batch|app|system)", re.I)
@@ -82,6 +83,21 @@ def _package(failure: dict | None) -> str:
     return f"{where}{on}: {said[:300]}.{likely}" if where else ""
 
 
+def _deploy(o: Observation, failure: dict | None, ran_at: str | None) -> tuple[str | None, str]:
+    """(who, and in words): the last deploy of the failed package's project shortly before it ran. A failure just after a change is
+    the first thing to look at."""
+    if not failure or not ran_at:
+        return None, ""
+    versions = o.versions.get(f"{failure.get('folder')}/{failure.get('project')}") or []
+    ran = _at(str(ran_at))
+    for v in versions:
+        made = str(v.get("created_time") or "")[:19]
+        if made and ran - timedelta(hours=DEPLOY_HOURS) <= _at(made) <= ran:
+            hours = (ran - _at(made)).total_seconds() / 3600
+            return v.get("created_by"), f" {v.get('created_by')} deployed {failure.get('project')} at {made}, {hours:.1f} hours before this run."
+    return None, ""
+
+
 def _streak(runs: list[dict]) -> tuple[int, int]:
     """(failed runs in a row, newest first; the good runs before them). (1, 40): new, after 40 good runs."""
     bad = next((i for i, r in enumerate(runs) if r.get("outcome") not in ("failed", "canceled")), len(runs))
@@ -106,8 +122,8 @@ def _failed(o: Observation, v: dict, prev: dict, severity: str) -> Signal:
     last = v["last_run"]
     blocks = _blocked(o).get(v["name"], [])
     if v["name"] not in o.histories and prev.get("failure"):   # the same failed run as the last pass, which read it
-        message, nxt, in_a_row = prev["failure"]
-        return Signal(o.env, "job-failed", v["name"], severity, message, nxt, last["start"], in_a_row, blocks)
+        message, nxt, in_a_row, who = prev["failure"]
+        return Signal(o.env, "job-failed", v["name"], severity, message, nxt, last["start"], in_a_row, blocks, deployed_by=who)
     runs = o.histories.get(v["name"], [])
     run = next(iter(runs), {})
     step = next((s for s in run.get("steps", []) if s["outcome"] in ("failed", "canceled")), None)
@@ -116,12 +132,15 @@ def _failed(o: Observation, v: dict, prev: dict, severity: str) -> Signal:
     text = (step or {}).get("message") or last.get("message") or ""
     script = (f" A {defined['subsystem']} step: SQL Agent keeps only the end of its output, so the script's own log has "
               f"the rest." if defined.get("subsystem") in SCRIPT_STEPS else "")
-    detail = _package(o.failures.get((step or {}).get("ssis_execution_id")))
+    failure = o.failures.get((step or {}).get("ssis_execution_id"))
+    detail = _package(failure)
+    who, change = _deploy(o, failure, last["start"])
     bad, good = _streak(runs)
     age = (f" Failed {bad} runs in a row." if bad > 1 else f" New: the first failure after {good} good runs." if good else "")
     stop = f" {', '.join(blocks)} did not run because of it." if blocks else ""
     return Signal(o.env, "job-failed", v["name"], severity, f"{v['name']} {last['outcome']} at {last['start']}{where}. "
-                  f"{text[:300]}{script}{detail}{age}{stop}", (step or {}).get("next") or v.get("next"), last["start"], bad, blocks, error=text[:300])
+                  f"{text[:300]}{script}{detail}{change}{age}{stop}", (step or {}).get("next") or v.get("next"), last["start"], bad, blocks,
+                  error=text[:300], deployed_by=who)
 
 
 def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -> tuple[list[Signal], dict[str, dict]]:
@@ -136,7 +155,7 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
             recent = now - _at(last["start"]) <= timedelta(hours=cfg.window_hours)
             s = _failed(o, v, prev, "critical" if recent else "warning")
             out.append(s)
-            failure = [s.message, s.next, s.in_a_row]
+            failure = [s.message, s.next, s.in_a_row, s.deployed_by]
 
         # A schedule that passed without a run shows nowhere on the server: next_run has simply moved on.
         missed, due = prev.get("missed"), prev.get("next_run")
@@ -306,8 +325,9 @@ def _executions(o: Observation, remembered: dict[str, dict]) -> list[Signal]:
         caller = str(e.get("caller") or "")
         person = None if _SERVICE.search(caller) or not caller else caller
         who = f"run by {caller}, so probably a test rather than the load" if person else f"started by {caller}, and no job failed with it"
+        by, change = _deploy(o, e, e["start_time"])
         out.append(Signal(o.env, "ssis-failed", subject, "warning", f"{subject} failed at {str(e['start_time'])[:19]}{where}{on}, {who}: "
-                          f"{text[:300]}{cause}", f"ssisbliss executions --id {e['execution_id']}", str(e["start_time"])[:19], person=person))
+                          f"{text[:300]}{cause}.{change}", f"ssisbliss executions --id {e['execution_id']}", str(e["start_time"])[:19], person=person, deployed_by=by))
     return out
 
 

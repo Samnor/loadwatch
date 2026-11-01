@@ -21,6 +21,7 @@ class Observation:
     failed_executions: list[dict] = field(default_factory=list)
     histories: dict[str, list[dict]] = field(default_factory=dict)  # job -> its recent runs, newest first
     failures: dict[int, dict] = field(default_factory=dict)         # failed step's SSIS execution -> ssisbliss's report of it
+    versions: dict[str, list[dict]] = field(default_factory=dict)   # folder/project with a failure -> its deployed versions, newest first
     history_runs: int = HISTORY_RUNS
     thorough: bool = False    # every job's history was read, not only the ones that changed
     target: list[str] = field(default_factory=list)   # how ssisbliss reaches it: --env NAME, or --server NAME
@@ -73,4 +74,8 @@ def observe(env: str, target: list[str], window_hours: float, seen_starts: dict[
                 found = ask(target, "executions", "--id", str(s["ssis_execution_id"])).get("executions")
                 if found:
                     o.failures[s["ssis_execution_id"]] = found[0]
+    for e in [*o.failures.values(), *o.failed_executions]:     # what changed before it failed
+        key = f"{e.get('folder')}/{e.get('project')}"
+        if e.get("folder") and key not in o.versions:
+            o.versions[key] = ask(target, "versions", "--folder", e["folder"], "--project", e["project"]).get("versions") or []
     return o

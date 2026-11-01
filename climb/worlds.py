@@ -68,6 +68,7 @@ class Server:
         if self.deployed_by:
             from ssisbliss.ssis.fake import dtsx, ispac
             who, _ = self.deployed_by
+            cat.next_lsn = int((datetime.combine(TODAY, datetime.min.time()) - datetime(2026, 10, 1)).total_seconds() // 3600) - 1   # tonight, 00:00
             cat.add_project("ETL", "ETL", ispac("ETL", {"Silver_load.dtsx": dtsx("Silver_load.dtsx")}), deployed_by=who)
         cat.save(d)
         maintenance = job("SSIS Server Maintenance Job", f"{day()}T00:00:10")

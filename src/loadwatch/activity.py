@@ -24,6 +24,7 @@ class Signal:
     person: str | None = None    # run by this person, not by a schedule: probably a test
     caused_by: str | None = None # this is a consequence of that one, which comes first
     error: str | None = None     # the error, as a job's alert has it: the same one in several jobs is one cause
+    deployed_by: str | None = None   # who deployed it shortly before it failed
 
 
 def priority(alert: dict, now: datetime, window_hours: float = 24) -> tuple:
@@ -51,6 +52,8 @@ def why_first(alert: dict, now: datetime, window_hours: float = 24) -> str:
         verb = "cannot start until it finishes" if alert["rule"] == "overrunning" else "did not run because of it"
         return f"{', '.join(blocks)} {verb}"
     at = alert.get("at")
+    if alert.get("deployed_by"):
+        return f"{alert['deployed_by']} deployed it just before it failed"
     if at and now - datetime.fromisoformat(at[:19]) > timedelta(hours=window_hours):
         return f"nothing is new, and this is the first of what is still open, from {at[:10]}"
     if alert.get("in_a_row") == 1:

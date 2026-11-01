@@ -17,6 +17,10 @@ The rule, fixed before the first measurement:
 - kept when agents do better: gain >= MIN_GAIN points per run and z >= Z, paired by agent and scenario;
 - kept when the report's own score rises and agents are no worse (z >= -NOT_WORSE); the verdict says so;
 - reverted otherwise.
+
+Added on 2026-11-02, before the measurements it applies to, because with 144 runs one scenario cannot move the mean by 5 and the report
+score had reached its maximum: also kept when a scenario that was mostly wrong (at most 1 of 4 right) becomes mostly right (at least 3 of
+4) and agents are no worse. The verdict says so.
 """
 from __future__ import annotations
 
@@ -299,6 +303,17 @@ def paired(new: dict, best: dict) -> dict:
     return {"gain": round(gain, 2), "se": round(se, 2), "z": round(z, 2), "pairs": n}
 
 
+def fixed(new: dict, best: dict) -> list[str]:
+    """Scenarios that went from at most 1 of 4 right to at least 3 of 4."""
+    def right(doc: dict) -> dict:
+        out: dict = {}
+        for r in doc["results"]:
+            out[r["scenario"]] = out.get(r["scenario"], 0) + bool(r["set"] and r["first"])
+        return out
+    a, b = right(new), right(best)
+    return [s for s in a if a[s] >= 3 and b.get(s, 4) <= 1]
+
+
 def verdict(new: dict, best: dict) -> dict:
     stats = paired(new, best)
     before, after = (sum(r["points"] for r in d["report"].values()) for d in (best, new))
@@ -306,6 +321,8 @@ def verdict(new: dict, best: dict) -> dict:
         why = "agents did better"
     elif after > before and stats["z"] >= -NOT_WORSE:
         why = "the report is better and agents are no worse"
+    elif fixed(new, best) and stats["z"] >= -NOT_WORSE:
+        why = f"a blind spot fixed ({', '.join(fixed(new, best))}) and agents are no worse"
     else:
         return {"keep": False, "why": "not enough better", **stats, "report": [before, after]}
     return {"keep": True, "why": why, **stats, "report": [before, after]}

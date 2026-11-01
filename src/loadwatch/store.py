@@ -45,7 +45,7 @@ class Store:
         with self.db:
             current = {(s.rule, s.subject) for s in signals}
             for s in signals:
-                facts = json.dumps({"at": s.at, "in_a_row": s.in_a_row, "blocks": s.blocks, "person": s.person, "caused_by": s.caused_by})
+                facts = json.dumps({"at": s.at, "in_a_row": s.in_a_row, "blocks": s.blocks, "person": s.person, "caused_by": s.caused_by, "deployed_by": s.deployed_by})
                 self.db.execute("""INSERT INTO alerts (env, rule, subject, severity, message, next, opened_at, last_seen, facts)
                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    ON CONFLICT (env, rule, subject) WHERE resolved_at IS NULL DO UPDATE SET
