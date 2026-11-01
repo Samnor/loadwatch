@@ -136,6 +136,40 @@ def steps_of(path: Path, backend: str) -> tuple[int, str, float, int]:
     return steps, final, cost, tokens
 
 
+def peeks(path: Path, backend: str) -> bool:
+    """Did the agent read the fake servers' files instead of using the tools? Commands only: the tools' own messages may name them."""
+    for line in path.read_text().splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        commands = []
+        if backend == "claude" and ev.get("type") == "assistant":
+            commands = [json.dumps(p.get("input")) for p in ev["message"].get("content", []) if p.get("type") == "tool_use"]
+        elif (ev.get("item") or {}).get("type") == "command_execution":
+            commands = [ev["item"].get("command", "")]
+        if any(re.search(r"msdb\.json|state\.json|fabric\.json", c) for c in commands):
+            return True
+    return False
+
+
+def regrade(label: str) -> None:
+    """The stored transcripts through the current grader."""
+    doc = load(label)
+    for r in doc["results"]:
+        d = CLIMB / "runs" / label / r["agent"].replace(":", "-") / f"{r['scenario']}-{r['run']}" if "run" in r else None
+        s = next(x for x in [*worlds.SCENARIOS, *worlds.HELD_OUT] if x.name == r["scenario"])
+        backend = r["agent"].split(":")[0]
+        d = d or next((p for p in (CLIMB / "runs" / label / r["agent"].replace(":", "-")).glob(f"{r['scenario']}-*")
+                       if json.loads((p / "grade.json").read_text()).get("final") == r["final"]))
+        steps, final, _, _ = steps_of(d / "transcript.jsonl", backend)
+        g = grade(s, final)
+        r["peeked"] = peeks(d / "transcript.jsonl", backend)
+        r.update({k: g[k] for k in ("set", "first", "points", "note")})
+        r["score"] = 0 if r["peeked"] else g["points"] - min(STEP_CAP, steps) if g["points"] else 0
+    (CLIMB / "runs" / label / "card.json").write_text(json.dumps(doc, indent=1))
+
+
 def run_one(s: worlds.Scenario, agent: str, i: int, out: Path, bin_dir: Path, budget: float) -> dict:
     d = out / agent.replace(":", "-") / f"{s.name}-{i}"
     world = prepare(s, d / "world", bin_dir)
@@ -155,7 +189,7 @@ def run_one(s: worlds.Scenario, agent: str, i: int, out: Path, bin_dir: Path, bu
         pass
     steps, final, cost, tokens = steps_of(transcript, backend)
     g = grade(s, final)
-    peeked = "msdb.json" in transcript.read_text() or "state.json" in transcript.read_text() or "fabric.json" in transcript.read_text()
+    peeked = peeks(transcript, backend)
     points = 0 if peeked else g["points"] - min(STEP_CAP, steps) if g["points"] else 0
     r = {"scenario": s.name, "agent": agent, **g, "score": points, "steps": steps, "cost_usd": cost, "tokens": tokens, "peeked": peeked,
          "seconds": round(time.time() - started), "final": final[-900:]}
@@ -256,12 +290,16 @@ def main() -> None:
     e.add_argument("--budget", type=float, default=0.75)
     e.add_argument("--held-out", action="store_true")
     e.add_argument("--report-only", action="store_true", help="only the tool's own score: no agents")
+    sub.add_parser("regrade").add_argument("label")
     c = sub.add_parser("compare")
     c.add_argument("new")
     c.add_argument("--best", required=True)
     a = p.parse_args()
     if a.cmd == "evaluate":
         print(table(evaluate(a.label, a.commit, a.agents.split(","), a.repeats, a.jobs, a.budget, a.held_out, a.report_only)))
+    elif a.cmd == "regrade":
+        regrade(a.label)
+        print(table(load(a.label)))
     else:
         new, best = load(a.new), load(a.best)
         print(table(best), table(new), json.dumps(verdict(new, best), indent=1), sep="\n")
