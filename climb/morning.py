@@ -77,9 +77,11 @@ def answer(text: str) -> tuple[list[str], str | None] | None:
 def says(s: worlds.Scenario, said: str, world: Path | None) -> bool:
     """A yes, no, unknown or number leads the answer; names must all be there, and no other job of that morning."""
     words = _norm(said).split()
-    if s.expect[0].lower() in ("yes", "no", "unknown") or s.expect[0].isdigit():
+    if s.expect[0].isdigit():
+        return s.expect[0] in words
+    if s.expect[0].lower() in ("yes", "no", "unknown"):
         return bool(words) and words[0] == s.expect[0].lower()
-    if len(s.expect) == 1 and s.name == "q-why":
+    if s.name in ("q-why", "q-what-changed"):
         return s.expect[0].replace("-", " ") in _norm(said)
     text = _norm(said)
     if not all(_norm(real) in text for real in s.expect):

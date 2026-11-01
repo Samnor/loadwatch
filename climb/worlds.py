@@ -34,6 +34,7 @@ class Server:
     steps: list = field(default_factory=list)
     history: list = field(default_factory=list)
     executions: list = field(default_factory=list)    # (id, package, caller, message), failed tonight
+    deployed_by: tuple | None = None                  # (who, when): the ETL project was deployed
     n: int = 100
 
     def add(self, name: str, kind: str = "SSIS", command: str | None = None, schedules: int = 1, on_fail: int = 2,
@@ -64,6 +65,10 @@ class Server:
         cat.event_rows = {i: [{"event_message_id": 1, "message_time": "", "message_type": 120, "message_source_type": 40, "subcomponent_name": None,
                                "execution_path": "", "message_source_name": "Load", "package_name": p, "package_path": "\\Package\\Load",
                                "message": f"Load:Error: {m}"}] for i, p, _, m in self.executions}
+        if self.deployed_by:
+            from ssisbliss.ssis.fake import ispac
+            who, _ = self.deployed_by
+            cat.add_project("ETL", "ETL", ispac("ETL", {"Silver_load.dtsx": b"<x/>"}), deployed_by=who)
         cat.save(d)
         maintenance = job("SSIS Server Maintenance Job", f"{day()}T00:00:10")
         (d / "msdb.json").write_text(json.dumps({"server_name": cat.info.server_name, "jobs": [*self.jobs, maintenance], "steps": self.steps,
@@ -328,6 +333,41 @@ def _broken_chain(root):
     return _root_cause(root)
 
 
+def _agent_stopped(root):
+    """SQL Agent has been down since yesterday: nothing failed, and nothing ran."""
+    s = Server("prod")
+    for i, n in enumerate(("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh")):
+        s.add(n, start=f"0{i + 1}:00:00", today=False)
+    r = Server("reporting")
+    r.add("Report extract", start="02:00:00")
+    return [s, r]
+
+
+def _common_cause(root):
+    s = Server("prod")
+    for i, n in enumerate(("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh")):
+        s.add(n, start=f"0{i + 1}:00:00", status=0, message="The transaction log for database DW is full due to LOG_BACKUP.")
+    return [s]
+
+
+def _big(root):
+    s = Server("prod")
+    for i in range(150):
+        s.add(f"Load table {i:03d}", start=f"0{1 + i % 6}:{i % 60:02d}:00", took=120 + i, nights=6)
+    s.add("Finance load", start="03:00:00", status=0, nights=6, message="Timeout expired")
+    s.add("Customer load", "PowerShell", "C:\\etl\\customers.ps1", start="03:30:00", on_fail=3, nights=6, steps=((1, "Run", 0, "Access denied"),))
+    return [s]
+
+
+def _deployed(root):
+    s = Server("prod")
+    s.add("Bronze load", start="01:00:00")
+    s.add("Silver load", start="02:00:00", status=0, message="Execution ID: 71")
+    s.executions = [(71, "Silver_load.dtsx", "NT SERVICE\\SQLAgent", "Invalid column name CustomerKey")]
+    s.deployed_by = ("LAB\\bob", f"{day()}T00:15:00")
+    return [s]
+
+
 def _question(name, build, ask, *expect):
     return Scenario(name, build, (), None, ask=ask, expect=expect)
 
@@ -354,6 +394,15 @@ SCENARIOS += [
     _question("q-page", _busy, "Give me the morning report as a web page I can open, saved as morning.html in this folder. Answer done.", "done"),
     _question("q-refresh", _fabric, "Did the Sales model refresh succeed? Answer yes, no or unknown.", "no"),
     _question("q-refused", _refused, "Did the Sales model refresh succeed? Answer yes, no or unknown.", "unknown"),
+]
+SCENARIOS += [
+    Scenario("agent-stopped", _agent_stopped, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh", "prod"), "prod",
+             note="nothing failed; every job on one server stopped starting"),
+    Scenario("common-cause", _common_cause, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh"), "Bronze load",
+             note="six jobs, one full transaction log"),
+    Scenario("big-morning", _big, ("Finance load", "Customer load"), "Finance load"),
+    _question("q-one-cause", _common_cause, "Do last night's failures share one cause? Answer yes or no.", "yes"),
+    _question("q-what-changed", _deployed, "Silver load failed. Did anyone deploy to it just before? Answer with the person's name, or none.", "bob"),
 ]
 HELD_OUT: list[Scenario] = []
 
