@@ -332,3 +332,27 @@ def test_one_overdue_job_is_only_that_job(estate):
     estate.jobs = [job("A", "2026-11-01T01:00:00"), job("B", "2026-11-03T01:00:00"), job("C", "2026-11-03T01:00:00")]
     estate.history = many_days("A")
     assert [a["rule"] for a in report(estate, "2026-11-03T08:00:00")["attention"]] == ["overdue"]
+
+
+def failing_with(estate, names, message):
+    estate.jobs = [job(n, "2026-11-02T01:00:00", status=0) for n in names]
+    estate.history = [r for n in names for r in run_rows(n, 5, "2026-11-02T01:00:00", status=0, steps=[(1, "Run", 0, message)])]
+
+
+def test_the_same_error_in_several_jobs_is_one_cause(estate):
+    failing_with(estate, ["A", "B", "C"], "Executed as user: LAB\\svc. The transaction log for database DW is full. Error 9002.")
+    doc = report(estate)
+    first = doc["attention"][0]
+    assert first["rule"] == "shared-cause" and doc["start_because"] == "one fix may clear all of them"
+    assert "The same error in 3 jobs" in first["message"] and "(A, B, C)" in first["message"]
+    assert all(a["caused_by"] == first["subject"] for a in doc["attention"][1:])
+
+
+def test_different_errors_are_different_causes(estate):
+    failing_with(estate, ["A", "B"], "The transaction log is full")
+    assert all(a["rule"] == "job-failed" for a in report(estate)["attention"])
+
+
+def test_the_generic_message_is_not_a_shared_cause(estate):
+    failing_with(estate, ["A", "B", "C"], "The job failed.")
+    assert all(a["rule"] == "job-failed" for a in report(estate)["attention"])

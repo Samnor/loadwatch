@@ -112,9 +112,9 @@ def grade(s: worlds.Scenario, text: str, world: Path | None = None) -> dict:
         return {"set": False, "first": False, "points": 0, "note": "no ATTENTION and FIRST lines"}
     names, first = got
     found = all(any(same(n, real) for n in names) for real in s.attention)
-    extra = [n for n in names if not any(same(n, real) for real in s.attention)]
+    extra = [n for n in names if not any(same(n, real) for real in (*s.attention, *s.also))]
     right_set = found and not extra
-    right_first = (first is None) if s.first is None else (first is not None and same(first, s.first))
+    right_first = (first is None) if s.first is None else (first is not None and any(same(first, x) for x in (s.first, *s.also)))
     points = 100 if right_set and right_first else 60 if right_set else 30 if right_first else 0
     if s.attention and not names:      # a false all clear
         points = 0
@@ -148,9 +148,9 @@ def report_score(s: worlds.Scenario, root: Path, bin_dir: Path) -> dict:
     items = doc.get("attention", [])
     names = [a["subject"] for a in items]
     found = all(any(same(n, real) for n in names) for real in s.attention)
-    false = [n for n in names if not any(same(n, real) for real in s.attention)]
+    false = [n for n in names if not any(same(n, real) for real in (*s.attention, *s.also))]
     top = doc.get("start_here") or (names[0] if names else None)
-    first = (top is None) if s.first is None else (top is not None and same(str(top), s.first))
+    first = (top is None) if s.first is None else (top is not None and any(same(str(top), x) for x in (s.first, *s.also)))
     return {"points": 40 * found + 30 * (not false) + 30 * first, "found": found, "false": false, "first": top}
 
 

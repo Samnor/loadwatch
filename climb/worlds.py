@@ -94,6 +94,7 @@ class Scenario:
     then: object = None                            # (world, run) -> what happens after a first report
     ask: str = ""                                  # a question, in place of the morning's "what needs attention"
     expect: tuple[str, ...] = ()                   # its answer: these names, or a word the answer must hold
+    also: tuple[str, ...] = ()                     # another fair way to name what comes first
 
 
 def _quiet(root):
@@ -396,10 +397,10 @@ SCENARIOS += [
     _question("q-refused", _refused, "Did the Sales model refresh succeed? Answer yes, no or unknown.", "unknown"),
 ]
 SCENARIOS += [
-    Scenario("agent-stopped", _agent_stopped, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh", "prod"), "prod",
-             note="nothing failed; every job on one server stopped starting"),
+    Scenario("agent-stopped", _agent_stopped, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "prod"), "prod",
+             note="nothing failed; every job on one server stopped starting; Cube refresh is still inside its grace period"),
     Scenario("common-cause", _common_cause, ("Bronze load", "Silver load", "Gold marts", "Fetch prices", "Archive files", "Cube refresh"), "Bronze load",
-             note="six jobs, one full transaction log"),
+             note="six jobs, one full transaction log", also=("transaction log",)),
     Scenario("big-morning", _big, ("Finance load", "Customer load"), "Finance load"),
     _question("q-one-cause", _common_cause, "Do last night's failures share one cause? Answer yes or no.", "yes"),
     _question("q-what-changed", _deployed, "Silver load failed. Did anyone deploy to it just before? Answer with the person's name, or none.", "bob"),

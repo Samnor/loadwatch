@@ -23,13 +23,14 @@ class Signal:
     blocks: list[str] = field(default_factory=list)   # what did not run because of it
     person: str | None = None    # run by this person, not by a schedule: probably a test
     caused_by: str | None = None # this is a consequence of that one, which comes first
+    error: str | None = None     # the error, as a job's alert has it: the same one in several jobs is one cause
 
 
 def priority(alert: dict, now: datetime, window_hours: float = 24) -> tuple:
     """What to look at first. What cannot be seen at all comes first, since it may hide anything; then what happened lately before
     what is old, a cause before its consequences, what needs someone before what is only worth a look, what blocks others, what is
     new before what has been failing for a while, and a person's test run last. Lower comes first."""
-    blind = alert["rule"] in ("server-unreachable", "nothing-started")
+    blind = alert["rule"] in ("server-unreachable", "nothing-started", "shared-cause")
     at = alert.get("at")
     recent = at is None or now - datetime.fromisoformat(at[:19]) <= timedelta(hours=window_hours)
     severity = {"critical": 0, "warning": 1}.get(alert["severity"], 2)
@@ -41,6 +42,8 @@ def why_first(alert: dict, now: datetime, window_hours: float = 24) -> str:
     """Why this one, in words. Only what is true of it: a reason that sounds sure and is wrong is worse than none."""
     if alert["rule"] == "server-unreachable":
         return "while it does not answer, nothing is known about what runs on it"
+    if alert["rule"] == "shared-cause":
+        return "one fix may clear all of them"
     if alert["rule"] == "nothing-started":
         return "jobs have stopped starting there, so everything else on it is waiting"
     blocks = alert.get("blocks") or []
