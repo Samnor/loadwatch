@@ -114,7 +114,11 @@ def parser() -> Parser:
     p = Parser(prog="loadwatch", formatter_class=argparse.RawDescriptionHelpFormatter, description=(
         "What ran, and what needs your attention, across your SQL Servers and Fabric workspaces.\n\n"
         "Run `loadwatch report`. It is the whole answer: it finds what to watch, reads it, and says what needs you and where to start.\n"
-        "Nothing else has to run first, and no other loadwatch command adds to it."))
+        "Nothing else has to run first, and no other loadwatch command adds to it.\n\n"
+        "  loadwatch report                                 to read here: what needs you, a timeline, and everything that ran\n"
+        "  loadwatch report --format html --out morning.html   the same as a page, with the timeline chart, to open or send\n"
+        "  loadwatch report --format json                   the same as data, with every run\n"
+        "  loadwatch report --since 2026-11-01T18:00:00     a longer period than since midnight"))
     p.add_argument("--config", help=f"default: ./{config.FILE}, then ~/.config/loadwatch/{config.FILE}")
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=Parser)
     s = sub.add_parser("discover", help="what can be watched, and why not: only needed to add a server. A report does this by itself")
