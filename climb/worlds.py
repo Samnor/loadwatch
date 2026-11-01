@@ -184,7 +184,6 @@ def _blast_radius(root):
     return [s]
 
 
-HELD_OUT: list[Scenario] = []
 SCENARIOS = [
     Scenario("quiet-night", _quiet, (), None),
     Scenario("root-cause", _root_cause, ("2 Silver", "3 Gold"), "2 Silver", toml='[[expect]]\nenv = "@prod"\njob = "3 Gold"\nby = "06:00"\n'),
@@ -196,6 +195,54 @@ SCENARIOS = [
     Scenario("fabric-refresh", _fabric, ("Sales model",), "Sales model"),
     Scenario("recovered", _recovered, (), None),
     Scenario("blast-radius", _blast_radius, ("Fetch rates", "2 Silver"), "2 Silver", note="one failure blocks two jobs"),
+]
+
+
+# Written after every change was made, and never used to make one: does this hold beyond the mornings it was tuned on?
+def _two_servers(root):
+    a, b = Server("prod"), Server("reporting")
+    a.add("Daily load", start="01:00:00", status=0, message="Timeout expired on dbo.Orders")
+    b.add("Daily load", start="01:00:00")
+    return [a, b]
+
+
+def _stuck_blocks_deadline(root):
+    s = Server("prod")
+    s.add("1 Bronze", start="00:30:00", took=600)
+    s.add("2 Silver", start="01:00:00", took=1200, today=False, running_since=f"{day()}T01:00:00")
+    s.add("3 Gold", start="02:00:00", schedules=0, today=False)
+    chained(s, "1 Bronze", "2 Silver", "3 Gold")
+    return [s]
+
+
+def _mixed(root):
+    s = Server("prod")
+    s.add("Legacy export", start="00:30:00", failed_nights=4, message="Could not find file")
+    s.add("Bronze load", start="01:00:00")
+    s.executions = [(91, "Try_new_mapping.dtsx", "LAB\\anna", "Invalid column name Amount2")]
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "p1", "displayName": "Load sales", "type": "DataPipeline"}]
+    jobs = [{"status": "Failed", "invokeType": "Scheduled", "startTimeUtc": f"{day()}T04:00:00", "endTimeUtc": f"{day()}T04:02:00",
+             "failureReason": {"errorCode": "JobFailed", "message": "Copy activity failed: source not found"}}]
+    jobs += [{"status": "Completed", "invokeType": "Scheduled", "startTimeUtc": f"{day(b)}T04:00:00", "endTimeUtc": f"{day(b)}T04:20:00"} for b in range(1, 6)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "jobs": {"p1": jobs}}
+
+
+def _only_old(root):
+    s = Server("prod")
+    s.jobs.append(job("Year end close", f"{day(30)}T02:00:00", status=0, schedules=0, duration=500))
+    s.steps.append(step("Year end close", 1, "Run", "TSQL", "EXEC x"))
+    s.history += run_rows("Year end close", 500, f"{day(30)}T02:00:00", status=0, steps=[(1, "Run", 0, "The step failed.")])
+    s.add("Bronze load", start="01:00:00")
+    s.add("Silver load", start="02:00:00")
+    return [s]
+
+
+HELD_OUT = [
+    Scenario("two-servers", _two_servers, ("Daily load",), "Daily load"),
+    Scenario("stuck-blocks-deadline", _stuck_blocks_deadline, ("2 Silver", "3 Gold"), "2 Silver", toml='[[expect]]\nenv = "@prod"\njob = "3 Gold"\nby = "06:00"\n'),
+    Scenario("mixed", _mixed, ("Load sales", "Legacy export", "Try_new_mapping"), "Load sales"),
+    Scenario("only-old", _only_old, ("Year end close",), "Year end close"),
 ]
 
 
