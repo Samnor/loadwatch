@@ -16,6 +16,7 @@ from .config import DAYS, Config, Expectation
 from .observe import Observation
 
 SCRIPT_STEPS = {"PowerShell", "CmdExec"}
+_SERVICE = re.compile(r"NT SERVICE|NT AUTHORITY|SQLAgent|\$$", re.I)       # an account a schedule runs as, not a person
 _OUTPUT_ERROR = re.compile(r"Traceback \(most recent call last\)|\bException\b|\bFullyQualifiedErrorId\b|\bERROR:", re.I)
 # The part of a pass a rule reads. A rule whose part could not be read did not look, so it cannot clear an alert:
 # no answer from a server is not good news.
@@ -74,12 +75,33 @@ def _package(failure: dict | None) -> str:
     return f"{where}{on}: {said[:300]}.{likely}" if where else ""
 
 
+def _streak(runs: list[dict]) -> tuple[int, int]:
+    """(failed runs in a row, newest first; the good runs before them). (1, 40): new, after 40 good runs."""
+    bad = next((i for i, r in enumerate(runs) if r.get("outcome") not in ("failed", "canceled")), len(runs))
+    good = next((i for i, r in enumerate(runs[bad:]) if r.get("outcome") != "succeeded"), len(runs) - bad)
+    return bad, good
+
+
+def _blocked(o: Observation) -> dict[str, list[str]]:
+    """job -> the jobs after it in its chain that did not start. From ssisbliss's own chain view."""
+    out: dict[str, list[str]] = {}
+    for c in o.chains:
+        links = c.get("links", [])
+        for i, link in enumerate(links):
+            if link["state"] in ("failed", "canceled"):
+                out[link["job"]] = [x["job"] for x in links[i + 1:] if x["state"] == "not_started"]
+    return out
+
+
 def _failed(o: Observation, v: dict, prev: dict, severity: str) -> Signal:
     """severity: an old failure stays open, but last night's come first."""
     last = v["last_run"]
+    blocks = _blocked(o).get(v["name"], [])
     if v["name"] not in o.histories and prev.get("failure"):   # the same failed run as the last pass, which read it
-        return Signal(o.env, "job-failed", v["name"], severity, *prev["failure"])
-    run = next(iter(o.histories.get(v["name"], [])), {})
+        message, nxt, in_a_row = prev["failure"]
+        return Signal(o.env, "job-failed", v["name"], severity, message, nxt, last["start"], in_a_row, blocks)
+    runs = o.histories.get(v["name"], [])
+    run = next(iter(runs), {})
     step = next((s for s in run.get("steps", []) if s["outcome"] in ("failed", "canceled")), None)
     defined = {s["step_id"]: s for s in v.get("steps", [])}.get(step["step_id"], {}) if step else {}
     where = f": step {step['step_id']} ({step['name']})" if step else ""
@@ -87,8 +109,11 @@ def _failed(o: Observation, v: dict, prev: dict, severity: str) -> Signal:
     script = (f" A {defined['subsystem']} step: SQL Agent keeps only the end of its output, so the script's own log has "
               f"the rest." if defined.get("subsystem") in SCRIPT_STEPS else "")
     detail = _package(o.failures.get((step or {}).get("ssis_execution_id")))
+    bad, good = _streak(runs)
+    age = (f" Failed {bad} runs in a row." if bad > 1 else f" New: the first failure after {good} good runs." if good else "")
+    stop = f" {', '.join(blocks)} did not run because of it." if blocks else ""
     return Signal(o.env, "job-failed", v["name"], severity, f"{v['name']} {last['outcome']} at {last['start']}{where}. "
-                  f"{text[:300]}{script}{detail}", (step or {}).get("next") or v.get("next"))
+                  f"{text[:300]}{script}{detail}{age}{stop}", (step or {}).get("next") or v.get("next"), last["start"], bad, blocks)
 
 
 def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -> tuple[list[Signal], dict[str, dict]]:
@@ -103,7 +128,7 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
             recent = now - _at(last["start"]) <= timedelta(hours=cfg.window_hours)
             s = _failed(o, v, prev, "critical" if recent else "warning")
             out.append(s)
-            failure = [s.message, s.next]
+            failure = [s.message, s.next, s.in_a_row]
 
         # A schedule that passed without a run shows nowhere on the server: next_run has simply moved on.
         missed, due = prev.get("missed"), prev.get("next_run")
@@ -113,7 +138,7 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
             missed = None
         if missed:
             out.append(Signal(o.env, "missed-schedule", name, "warning", f"{name} was due at {missed} and did not start",
-                              "ssisbliss jobs --brief"))
+                              "ssisbliss jobs --brief", missed))
 
         # Someone turned it off. Sticky until it is back on or the alert is acknowledged: nothing else will ever say so.
         active = bool(v["enabled"] and v.get("schedules"))
@@ -128,7 +153,7 @@ def _jobs(o: Observation, cfg: Config, memory: dict[str, dict], now: datetime) -
             took, typical = (now - _at(v["running_since"])).total_seconds(), median(usual)
             if took >= cfg.overrun_factor * typical and took - typical >= cfg.overrun_minutes * 60:
                 out.append(Signal(o.env, "overrunning", name, "warning", f"{name} has run for {_minutes(took)}; it usually takes "
-                                  f"{_minutes(typical)} (median of {len(usual)} runs)", "ssisbliss chain"))
+                                  f"{_minutes(typical)} (median of {len(usual)} runs)", "ssisbliss chain", v["running_since"]))
         # What the job's history says only counts when it was read; the next pass, which does not read it, must not
         # take that for the problem having gone. It holds until history is read again.
         kept = [Signal(**s) for s in prev.get("from_history", [])]
@@ -154,7 +179,7 @@ def _ran_long(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Si
     if last < cfg.overrun_factor * usual or last - usual < cfg.overrun_minutes * 60:
         return []
     return [Signal(o.env, "ran-long", v["name"], "warning", f"{v['name']} took {_minutes(last)} at {runs[0]['start']}; it usually takes "
-                   f"{_minutes(usual)}. Anything after it started late", f'ssisbliss history "{v["name"]}" --runs 10')]
+                   f"{_minutes(usual)}. Anything after it started late", f'ssisbliss history "{v["name"]}" --runs 10', runs[0]["start"])]
 
 
 def _overdue(o: Observation, cfg: Config, v: dict, runs: list[dict], active: bool, missed: str | None,
@@ -170,7 +195,7 @@ def _overdue(o: Observation, cfg: Config, v: dict, runs: list[dict], active: boo
         return []
     return [Signal(o.env, "overdue", v["name"], "warning", f"{v['name']} last started at {starts[0].isoformat()}: {quiet / 3600:.1f} "
                    f"hours ago, and it has not gone more than {longest / 3600:.1f} hours between runs lately",
-                   "ssisbliss jobs --brief")]
+                   "ssisbliss jobs --brief", now.isoformat()[:19])]
 
 
 def _silent(o: Observation, v: dict, run: dict) -> list[Signal]:
@@ -182,10 +207,10 @@ def _silent(o: Observation, v: dict, run: dict) -> list[Signal]:
         if s["outcome"] in ("failed", "canceled"):
             out.append(Signal(o.env, "step-failed-silently", subject, "warning", f"{v['name']} reports success, but step "
                               f"{s['step_id']} ({s['name']}) failed and the job went on: {(s.get('message') or '')[:300]}",
-                              s.get("next")))
+                              s.get("next"), run.get("start")))
         elif defined.get(s["step_id"], {}).get("subsystem") in SCRIPT_STEPS and _OUTPUT_ERROR.search(s.get("message") or ""):
             out.append(Signal(o.env, "script-output-error", subject, "warning", f"{v['name']}: {s['name']} exited 0, but its "
-                              f"output looks like a failure: {(s.get('message') or '')[:300]}"))
+                              f"output looks like a failure: {(s.get('message') or '')[:300]}", at=run.get("start")))
         if s.get("slower"):
             out.append(Signal(o.env, "slower", subject, "info", f"{v['name']}: {s['name']} {s['slower']}", s.get("next")))
     return out
@@ -219,9 +244,11 @@ def _executions(o: Observation, remembered: dict[str, dict]) -> list[Signal]:
         on = f" on database {task['database']}" if task.get("database") else ""
         known = next(iter(task.get("explained") or []), {})
         cause = f" Likely: {known['cause']}" if known.get("cause") else ""
-        out.append(Signal(o.env, "ssis-failed", subject, "warning", f"{subject} failed at {str(e['start_time'])[:19]}{where}{on}, started by "
-                          f"{e.get('caller')}, and no job failed with it: {text[:300]}{cause}",
-                          f"ssisbliss executions --id {e['execution_id']}"))
+        caller = str(e.get("caller") or "")
+        person = None if _SERVICE.search(caller) or not caller else caller
+        who = f"run by {caller}, so probably a test rather than the load" if person else f"started by {caller}, and no job failed with it"
+        out.append(Signal(o.env, "ssis-failed", subject, "warning", f"{subject} failed at {str(e['start_time'])[:19]}{where}{on}, {who}: "
+                          f"{text[:300]}{cause}", f"ssisbliss executions --id {e['execution_id']}", str(e["start_time"])[:19], person=person))
     return out
 
 

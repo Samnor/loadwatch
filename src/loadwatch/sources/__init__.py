@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from ..activity import Source
 from ..config import Config
-from .fabric import FabricClient, FabricSource, client as fabric_client
+from .fabric import FabricClient, FabricSource
+from .fabric import client as fabric_client
 from .sqlserver import SqlServerSource
 
 if TYPE_CHECKING:

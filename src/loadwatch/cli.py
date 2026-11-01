@@ -16,7 +16,8 @@ from ssisbliss.ssis.contract import EXIT_USAGE, Parser, UsageError, envelope, us
 from . import config, discover, html_report, notify, report
 from .activity import Result
 from .sources import build
-from .sources.fabric import FabricClient, client as fabric_client
+from .sources.fabric import FabricClient
+from .sources.fabric import client as fabric_client
 from .store import Store
 
 COMMANDS = ["discover", "report", "check", "status", "alerts", "ack"]

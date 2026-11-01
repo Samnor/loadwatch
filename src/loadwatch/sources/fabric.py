@@ -227,12 +227,16 @@ def judge(source: str, item: dict, runs: list[dict], since: datetime, now: datet
         recent = now - datetime.fromisoformat(last["start"]) <= timedelta(hours=cfg.window_hours)
         severity = "critical" if recent and last["status"] == FAILED else "warning"
         reason = f": {last['failure'][:300]}" if last["failure"] else ""
-        signals.append(Signal(source, "fabric-failed", name, severity, f"{what} {name} {last['status']} at {last['start']}{reason}", url))
+        bad = next((i for i, r in enumerate(finished) if r["status"] not in (FAILED, CANCELED)), len(finished))
+        good = next((i for i, r in enumerate(finished[bad:]) if r["status"] != SUCCEEDED), len(finished) - bad)
+        age = f" Failed {bad} runs in a row." if bad > 1 else f" New: the first failure after {good} good runs." if good else ""
+        signals.append(Signal(source, "fabric-failed", name, severity, f"{what} {name} {last['status']} at {last['start']}{reason}.{age}", url,
+                              last["start"], bad))
     elif last and len(usual) > cfg.min_runs and last["duration_s"] is not None:
         typical = median(usual[1:])
         if last["duration_s"] >= cfg.overrun_factor * typical and last["duration_s"] - typical >= cfg.overrun_minutes * 60:
             signals.append(Signal(source, "ran-long", name, "warning", f"{what} {name} took {last['duration_s'] / 60:.0f} min at "
-                                  f"{last['start']}; it usually takes {typical / 60:.0f} min", url))
+                                  f"{last['start']}; it usually takes {typical / 60:.0f} min", url, last["start"]))
     starts = [datetime.fromisoformat(r["start"]) for r in runs if r["scheduled"]]     # a manual run says nothing about a schedule
     running = len(finished) < len(runs)
     if len(starts) > cfg.min_runs and not running:
@@ -240,7 +244,7 @@ def judge(source: str, item: dict, runs: list[dict], since: datetime, now: datet
         quiet = (now - starts[0]).total_seconds()
         if longest > 0 and quiet >= 1.1 * longest + cfg.grace_minutes * 60:
             signals.append(Signal(source, "overdue", name, "warning", f"{what} {name} last ran on schedule at {starts[0].isoformat()}: "
-                                  f"{quiet / 3600:.1f} hours ago, and it has not gone more than {longest / 3600:.1f} hours between runs lately", url))
+                                  f"{quiet / 3600:.1f} hours ago, and it has not gone more than {longest / 3600:.1f} hours between runs lately", url, now.isoformat()[:19]))
     period = [r for r in runs if r["status"] == RUNNING or ended(r) >= since]
     if not period:
         if any(s.rule == "overdue" for s in signals):

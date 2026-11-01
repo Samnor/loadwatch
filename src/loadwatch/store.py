@@ -13,7 +13,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY, env TEXT NOT NULL, rule TEXT NOT NULL, subject TEXT NOT NULL, severity TEXT NOT NULL,
     message TEXT NOT NULL, next TEXT, opened_at TEXT NOT NULL, last_seen TEXT NOT NULL, passes INTEGER NOT NULL DEFAULT 1,
-    resolved_at TEXT, acked_at TEXT, ack_note TEXT, told_at TEXT, told_resolved_at TEXT);
+    resolved_at TEXT, acked_at TEXT, ack_note TEXT, told_at TEXT, told_resolved_at TEXT, facts TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS one_open ON alerts (env, rule, subject) WHERE resolved_at IS NULL;
 CREATE TABLE IF NOT EXISTS jobs (env TEXT NOT NULL, job TEXT NOT NULL, memory TEXT NOT NULL, PRIMARY KEY (env, job));
 CREATE TABLE IF NOT EXISTS passes (env TEXT PRIMARY KEY, at TEXT NOT NULL, server TEXT, unread TEXT NOT NULL);
@@ -26,6 +26,8 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        if "facts" not in [c[1] for c in self.db.execute("PRAGMA table_info(alerts)")]:     # a database from before facts
+            self.db.execute("ALTER TABLE alerts ADD COLUMN facts TEXT")
 
     def memory(self, env: str) -> dict[str, dict]:
         return {r["job"]: json.loads(r["memory"]) for r in self.db.execute("SELECT job, memory FROM jobs WHERE env = ?", (env,))}
@@ -43,12 +45,13 @@ class Store:
         with self.db:
             current = {(s.rule, s.subject) for s in signals}
             for s in signals:
-                self.db.execute("""INSERT INTO alerts (env, rule, subject, severity, message, next, opened_at, last_seen)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                facts = json.dumps({"at": s.at, "in_a_row": s.in_a_row, "blocks": s.blocks, "person": s.person})
+                self.db.execute("""INSERT INTO alerts (env, rule, subject, severity, message, next, opened_at, last_seen, facts)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    ON CONFLICT (env, rule, subject) WHERE resolved_at IS NULL DO UPDATE SET
                                        severity = excluded.severity, message = excluded.message, next = excluded.next,
-                                       last_seen = excluded.last_seen, passes = passes + 1""",
-                                (s.env, s.rule, s.subject, s.severity, s.message, s.next, now, now))
+                                       last_seen = excluded.last_seen, passes = passes + 1, facts = excluded.facts""",
+                                (s.env, s.rule, s.subject, s.severity, s.message, s.next, now, now, facts))
             for r in self.db.execute("SELECT id, rule, subject FROM alerts WHERE env = ? AND resolved_at IS NULL", (env,)).fetchall():
                 if r["rule"] in looked and (r["rule"], r["subject"]) not in current:
                     self.db.execute("UPDATE alerts SET resolved_at = ? WHERE id = ?", (now, r["id"]))
@@ -71,7 +74,8 @@ class Store:
     def alerts(self, everything: bool = False) -> list[dict]:
         where = "" if everything else "WHERE resolved_at IS NULL"
         order = "CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, opened_at"
-        return [dict(r) for r in self.db.execute(f"SELECT * FROM alerts {where} ORDER BY resolved_at IS NOT NULL, {order}")]
+        rows = [dict(r) for r in self.db.execute(f"SELECT * FROM alerts {where} ORDER BY resolved_at IS NOT NULL, {order}")]
+        return [{**r, **json.loads(r.get("facts") or "{}")} for r in rows]
 
     def ack(self, alert: int, note: str | None, at: datetime) -> bool:
         with self.db:

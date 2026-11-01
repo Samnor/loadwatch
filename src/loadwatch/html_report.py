@@ -16,7 +16,7 @@ CSS = """
 --band:rgba(255,255,255,.03);--line:rgba(255,255,255,.10);--run:#3987e5;--fill:#52514e}}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}h1{font-size:26px;line-height:1.25;margin:0 0 4px}h2{font-size:17px;margin:32px 0 10px}
-.sub{color:var(--ink2);margin:0}section.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.sub{color:var(--ink2);margin:0}.start{margin:12px 0 0;font-size:16px}section.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 ul.alerts{list-style:none;margin:0;padding:0}ul.alerts li{padding:10px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}ul.alerts li:first-child{border-top:0;padding-top:0}
 ul.alerts li:last-child{padding-bottom:0}.subject{font-weight:600}code{font:13px ui-monospace,Consolas,monospace;color:var(--ink2);display:block;margin-top:4px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink2);font-size:13px;margin-bottom:8px}.legend span{display:inline-flex;align-items:center;gap:6px}
@@ -70,6 +70,8 @@ def page(doc: dict) -> str:
     parts = [f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              f'<title>{escape(doc["verdict"])}</title><style>{CSS}</style><main><h1>{escape(doc["verdict"])}</h1>'
              f'<p class="sub">{escape(summary(doc))}</p>']
+    if doc.get("start_here"):
+        parts.append(f'<p class="start"><b>Start here: {escape(doc["start_here"])}</b>: {escape(doc["start_because"])}.</p>')
     for severity, title in HEADINGS.items():
         found = [a for a in doc["attention"] if a["severity"] == severity]
         if found:

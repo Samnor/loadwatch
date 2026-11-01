@@ -3,7 +3,7 @@ later. The report and the alerts only know these shapes, so a new source adds a 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 
 # A run's status, in every source's terms. Sources map their own words to these.
@@ -18,6 +18,35 @@ class Signal:
     severity: str            # critical, warning, info
     message: str
     next: str | None = None  # the command that says more
+    at: str | None = None    # when it happened, if it is an event: what comes first depends on it
+    in_a_row: int = 0        # how many runs in a row have failed; 1 is new
+    blocks: list[str] = field(default_factory=list)   # what did not run because of it
+    person: str | None = None    # run by this person, not by a schedule: probably a test
+
+
+def priority(alert: dict, now: datetime, window_hours: float = 24) -> tuple:
+    """What to look at first. What cannot be seen at all comes first, since it may hide anything; then what happened lately before
+    what is old, what needs someone before what is only worth a look, what blocks others, what is new before what has been failing
+    for a while, and a person's test run last. Lower comes first."""
+    blind = alert["rule"] == "server-unreachable"
+    at = alert.get("at")
+    recent = at is None or now - datetime.fromisoformat(at[:19]) <= timedelta(hours=window_hours)
+    severity = {"critical": 0, "warning": 1}.get(alert["severity"], 2)
+    return (not blind, bool(alert.get("person")), not recent, severity, -len(alert.get("blocks") or []),
+            max(alert.get("in_a_row") or 1, 1), alert.get("opened_at") or "")
+
+
+def why_first(alert: dict) -> str:
+    """Why this one, in words."""
+    if alert["rule"] == "server-unreachable":
+        return "while it does not answer, nothing is known about what runs on it"
+    blocks = alert.get("blocks") or []
+    if blocks:
+        return f"{', '.join(blocks)} did not run because of it"
+    n = alert.get("in_a_row") or 0
+    if n == 1:
+        return "it is new tonight"
+    return "it is the most recent and most serious"
 
 
 @dataclass

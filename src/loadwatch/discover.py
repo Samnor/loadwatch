@@ -27,7 +27,8 @@ from pathlib import Path
 
 from .config import Config
 from .observe import ask
-from .sources.fabric import FabricClient, client as fabric_client, watchable
+from .sources.fabric import FabricClient, watchable
+from .sources.fabric import client as fabric_client
 
 MAX_AGE = timedelta(hours=24)
 _NOT_SQL_AGENT = re.compile(r"\(localdb\)|\.database\.windows\.net|\.fabric\.microsoft\.com|\.database\.fabric", re.I)

@@ -6,7 +6,7 @@ from dataclasses import asdict
 from datetime import datetime
 
 from . import gantt
-from .activity import Result
+from .activity import Result, priority, why_first
 
 ORDER = ("failed", "missing", "suspect", "slow", "running", "recovered", "ok")
 HEADINGS = {"critical": "Needs you now", "warning": "Needs a look", "info": "Worth knowing"}
@@ -16,15 +16,15 @@ _clock = gantt.clock
 
 
 def _alert(a: dict) -> dict:
-    return {k: a[k] for k in ("id", "env", "rule", "subject", "severity", "message", "next", "opened_at", "ack_note", "resolved_at")
-            if a.get(k) is not None}
+    return {k: a[k] for k in ("id", "env", "rule", "subject", "severity", "message", "next", "opened_at", "ack_note", "resolved_at", "at",
+                              "in_a_row", "blocks", "person") if a.get(k) not in (None, [], 0)}
 
 
 def build(results: list[Result], alerts: list[dict], since: datetime, now: datetime, estate=None) -> dict:
     """alerts: from the store, open and resolved, so that what was already known and acknowledged keeps that."""
     stamp = since.isoformat()[:19]
     current = [a for a in alerts if a["resolved_at"] is None]
-    attention = [a for a in current if a["acked_at"] is None]
+    attention = sorted((a for a in current if a["acked_at"] is None), key=lambda a: priority(a, now))
     urgent = [a for a in attention if a["severity"] != "info"]
     activities = [x for r in results for x in r.activities]
     counts = {state: sum(a.state == state for a in activities) for state in ORDER}
@@ -39,6 +39,7 @@ def build(results: list[Result], alerts: list[dict], since: datetime, now: datet
     return {"verdict": verdict, "since": stamp, "at": now.isoformat()[:19], "counts": counts, "ran": ran,
             "sources": [{"source": r.source, "kind": r.kind, "location": r.location, "watched": r.watched,
                          "ran": len(r.activities), **({"unread": r.unread} if r.unread else {})} for r in results],
+            "start_here": attention[0]["subject"] if urgent else None, "start_because": why_first(attention[0]) if urgent else None,
             "attention": [_alert(a) for a in attention],
             "acknowledged": [_alert(a) for a in current if a["acked_at"] is not None],
             "resolved": [_alert(a) for a in alerts if a["resolved_at"] is not None and a["resolved_at"] >= stamp],
@@ -109,6 +110,8 @@ def _table(lines: list[str], doc: dict) -> None:
 
 def markdown(doc: dict) -> str:
     lines = [f"# {doc['verdict']}", "", summary(doc), ""]
+    if doc.get("start_here"):
+        lines += [f"**Start here: {doc['start_here']}**: {doc['start_because']}.", ""]
     blind = [f"**{s['source']}**: could not read {part}: {why}" for s in doc["sources"] for part, why in s.get("unread", {}).items()]
     for severity, title in HEADINGS.items():
         _section(lines, title, [a for a in doc["attention"] if a["severity"] == severity])

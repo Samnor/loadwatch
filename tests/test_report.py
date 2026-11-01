@@ -178,3 +178,62 @@ def test_json_report_keeps_the_contract(estate):
     nightly(estate)
     doc = report(estate)
     assert doc["ok"] is True and json.dumps(doc)
+
+
+def test_start_here_is_what_blocks_others_not_what_failed_first(estate):
+    estate.jobs = [job("Rates", "2026-11-02T00:10:00", status=0), job("1 A", "2026-11-02T00:30:00"), job("2 B", "2026-11-02T00:45:00", status=0),
+                   job("3 C", "2026-11-01T01:00:00", schedules=0)]
+    estate.steps = [step("1 A", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'2 B';"),
+                    step("2 B", 1, "Next", "TSQL", "EXEC msdb.dbo.sp_start_job @job_name = N'3 C';")]
+    doc = report(estate)
+    assert doc["start_here"] == "2 B" and doc["start_because"] == "3 C did not run because of it"
+    assert [a["subject"] for a in doc["attention"]] == ["2 B", "Rates"] and doc["attention"][0]["blocks"] == ["3 C"]
+
+
+def test_a_new_failure_comes_before_one_that_has_been_failing(estate):
+    days = ["2026-11-02", "2026-11-01", "2026-10-31", "2026-10-30", "2026-10-29"]
+    estate.jobs = [job("Legacy", "2026-11-02T00:10:00", status=0), job("Sales", "2026-11-02T01:00:00", status=0)]
+    estate.history = [r for i, d in enumerate(days) for r in run_rows("Legacy", 10 - i, f"{d}T00:10:00", status=0)]
+    estate.history += run_rows("Sales", 3, "2026-11-02T01:00:00", status=0) + run_rows("Sales", 2, "2026-11-01T01:00:00")
+    doc = report(estate)
+    assert doc["start_here"] == "Sales" and "first failure after 1 good runs" in doc["attention"][0]["message"]
+    legacy = doc["attention"][1]
+    assert legacy["in_a_row"] == 5 and "Failed 5 runs in a row" in legacy["message"]
+
+
+def test_tonights_warning_comes_before_an_old_failure(estate):
+    estate.jobs = [job("Old", "2026-10-02T02:00:00", status=0), job("Archive", "2026-11-02T03:00:00")]
+    estate.steps = [step("Archive", 1, "Copy", "PowerShell", "x.ps1", on_fail=3)]
+    estate.history = run_rows("Archive", 1, "2026-11-02T03:00:00", steps=[(1, "Copy", 0, "Access denied")])
+    assert report(estate)["start_here"] == "Archive / Copy"
+
+
+def test_a_persons_test_run_comes_last_and_says_so(estate):
+    from datetime import datetime, timedelta
+
+    from test_rules import _failed_execution
+    now = datetime.now().replace(microsecond=0)
+    estate.jobs = [job("Daily", (now - timedelta(hours=2)).isoformat(), status=0)]
+    _failed_execution(estate.catalog(), 88)
+    cat = estate.catalog()
+    cat.execution_rows[0]["caller_name"] = "LAB\\dave"
+    cat.save()
+    doc = report(estate, now.isoformat())
+    assert doc["start_here"] == "Daily" and doc["attention"][1]["person"] == "LAB\\dave" and "probably a test" in doc["attention"][1]["message"]
+
+
+def test_a_server_that_does_not_answer_comes_first():
+    from datetime import datetime
+
+    from loadwatch.activity import priority
+    now = datetime(2026, 11, 2, 8)
+    alerts = [{"rule": "job-failed", "severity": "critical", "at": "2026-11-02T01:00:00", "opened_at": "x", "subject": "a"},
+              {"rule": "server-unreachable", "severity": "critical", "opened_at": "x", "subject": "b"}]
+    assert sorted(alerts, key=lambda a: priority(a, now))[0]["subject"] == "b"
+
+
+def test_the_report_opens_with_where_to_start(estate):
+    nightly(estate, status=0)
+    estate.save()
+    text, _ = estate.cli("report", "--now", "2026-11-02T08:00:00")
+    assert text.split("\n")[4].startswith("**Start here: Nightly**")
