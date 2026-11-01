@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import webbrowser
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from ssisbliss.ssis.contract import EXIT_USAGE, Parser, UsageError, envelope, us
 from . import config, discover, html_report, notify, report
 from .activity import Result
 from .sources import build
-from .sources.fabric import FabricClient
+from .sources.fabric import FabricClient, client as fabric_client
 from .store import Store
 
 COMMANDS = ["discover", "report", "check", "status", "alerts", "ack"]
@@ -23,7 +24,8 @@ SEVERITIES = ("critical", "warning", "info")
 
 
 def _now(a) -> datetime:
-    return datetime.fromisoformat(a.now) if getattr(a, "now", None) else datetime.now().replace(microsecond=0)
+    at = getattr(a, "now", None) or os.environ.get("LOADWATCH_NOW")
+    return datetime.fromisoformat(at) if at else datetime.now().replace(microsecond=0)
 
 
 def _public(alert: dict) -> dict:
@@ -46,7 +48,7 @@ def cmd_report(a, cfg: config.Config, store: Store) -> tuple[dict | str, int]:
     """Nothing has to have run before: a report reads every job's history itself."""
     now = _now(a)
     since = datetime.fromisoformat(a.since) if a.since else now.replace(hour=0, minute=0, second=0, microsecond=0)
-    client = FabricClient()
+    client = fabric_client()
     estate = discover.current(cfg, now, a.rediscover, client)
     results = _pass(cfg, store, estate, client, since, now, thorough=True)
     doc = report.build(results, store.alerts(everything=True), since, now, estate)
@@ -66,7 +68,7 @@ def cmd_report(a, cfg: config.Config, store: Store) -> tuple[dict | str, int]:
 def cmd_check(a, cfg: config.Config, store: Store) -> tuple[dict, int]:
     now = _now(a)
     since = now - timedelta(hours=cfg.window_hours)
-    client = FabricClient()
+    client = fabric_client()
     estate = discover.current(cfg, now, client=client)
     environments = [{"env": r.source, "server": r.location, "jobs": r.watched, "signals": len(r.signals),
                      **({"unread": r.unread} if r.unread else {})}

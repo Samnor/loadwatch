@@ -27,7 +27,7 @@ from pathlib import Path
 
 from .config import Config
 from .observe import ask
-from .sources.fabric import FabricClient, watchable
+from .sources.fabric import FabricClient, client as fabric_client, watchable
 
 MAX_AGE = timedelta(hours=24)
 _NOT_SQL_AGENT = re.compile(r"\(localdb\)|\.database\.windows\.net|\.fabric\.microsoft\.com|\.database\.fabric", re.I)
@@ -306,7 +306,7 @@ def discover(cfg: Config, now: datetime, network: bool = False, named: list[str]
     sql = find_sql(cfg, network, list(named))
     with ThreadPoolExecutor(PROBES) as pool:
         sql = list(pool.map(lambda t: probe_sql(t, cfg.ssisbliss_config), sql))
-    fabric, notes = find_fabric(client or FabricClient())
+    fabric, notes = find_fabric(client or fabric_client())
     for t in sql:
         if t.watched and t.trust:
             notes.append(f"{t.name}: its certificate could not be verified, so it is trusted for reading")

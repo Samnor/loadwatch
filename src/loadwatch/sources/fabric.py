@@ -12,6 +12,7 @@ and some models have none to give: those are counted as not read, not reported a
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -21,6 +22,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from statistics import median
 
 from ..activity import (
@@ -142,6 +144,31 @@ class FabricClient:
 
     def refreshes(self, workspace: str, model: str) -> list[dict]:
         return self.get(f"{POWER_BI_API}/groups/{workspace}/datasets/{model}/refreshes?$top=60", POWER_BI).get("value", [])
+
+
+class FakeFabric:
+    """A tenant from a JSON file, for tests and evaluations: $LOADWATCH_FAKE_FABRIC, as ssisbliss has fake:// servers.
+    {"workspaces": [...], "items": {workspace: [...]}, "jobs": {item: [...]}, "refreshes": {item: [...]}}"""
+
+    def __init__(self, path: str):
+        self.state = json.loads(Path(path).read_text())
+
+    def workspaces(self) -> list[dict]:
+        return self.state.get("workspaces", [])
+
+    def items(self, workspace: str) -> list[dict]:
+        return self.state.get("items", {}).get(workspace, [])
+
+    def job_runs(self, workspace: str, item: str) -> list[dict]:
+        return self.state.get("jobs", {}).get(item, [])
+
+    def refreshes(self, workspace: str, model: str) -> list[dict]:
+        return self.state.get("refreshes", {}).get(model, [])
+
+
+def client() -> FabricClient:
+    fake = os.environ.get("LOADWATCH_FAKE_FABRIC")
+    return FakeFabric(fake) if fake else FabricClient()
 
 
 def watchable(items: list[dict]) -> list[dict]:

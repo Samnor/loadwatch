@@ -38,6 +38,11 @@ class Config:
     heartbeat: str | None = None        # pinged after a pass, so a dead monitor is noticed by someone else
 
 
+def home() -> Path:
+    """Where loadwatch keeps its state: ~/.loadwatch, or $LOADWATCH_HOME."""
+    return Path(os.environ.get("LOADWATCH_HOME") or "~/.loadwatch").expanduser()
+
+
 def find(path: str | None = None) -> Path | None:
     """--config must exist; the usual places may not, and need not."""
     if path:
@@ -50,14 +55,13 @@ def find(path: str | None = None) -> Path | None:
 def load(path: str | None = None) -> Config:
     file = find(path)
     if file is None:
-        c = Config()
-        c.db = c.db.expanduser()
+        c = Config(db=home() / "loadwatch.db")
         c.webhook = os.environ.get("LOADWATCH_WEBHOOK")
         return c
     raw = tomllib.loads(file.read_text())
     known = {"db", "environments", "ssisbliss_config", "window_hours", "overrun_factor", "overrun_minutes", "min_runs",
              "grace_minutes", "remind_hours", "heartbeat"}
-    c = Config(**{k: v for k, v in raw.items() if k in known})
+    c = Config(**{"db": home() / "loadwatch.db", **{k: v for k, v in raw.items() if k in known}})
     c.db = Path(c.db).expanduser()
     if c.ssisbliss_config:
         c.ssisbliss_config = str((file.parent / Path(c.ssisbliss_config).expanduser()).resolve())

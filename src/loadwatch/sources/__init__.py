@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ..activity import Source
 from ..config import Config
-from .fabric import FabricClient, FabricSource
+from .fabric import FabricClient, FabricSource, client as fabric_client
 from .sqlserver import SqlServerSource
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 def build(cfg: Config, estate: "Estate", client: FabricClient | None = None) -> list[Source]:
     out: list[Source] = []
-    fabric = client or FabricClient()    # one client: tokens are asked for once
+    fabric = client or fabric_client()    # one client: tokens are asked for once
     for t in estate.targets:
         if not t.watched:
             continue
