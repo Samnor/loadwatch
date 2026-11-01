@@ -39,7 +39,7 @@ def build(results: list[Result], alerts: list[dict], since: datetime, now: datet
     return {"verdict": verdict, "since": stamp, "at": now.isoformat()[:19], "counts": counts, "ran": ran,
             "sources": [{"source": r.source, "kind": r.kind, "location": r.location, "watched": r.watched,
                          "ran": len(r.activities), **({"unread": r.unread} if r.unread else {})} for r in results],
-            "start_here": attention[0]["subject"] if urgent else None, "start_because": why_first(attention[0]) if urgent else None,
+            "start_here": attention[0]["subject"] if urgent else None, "start_because": why_first(attention[0], now) if urgent else None,
             "attention": [_alert(a) for a in attention],
             "acknowledged": [_alert(a) for a in current if a["acked_at"] is not None],
             "resolved": [_alert(a) for a in alerts if a["resolved_at"] is not None and a["resolved_at"] >= stamp],

@@ -27,5 +27,8 @@ On four held-out mornings (16 runs each, side by side): the original got 13/16 i
 The held-out mornings found one real gap, left unfixed so that they stay honest: when a job overruns and so a later job misses its
 deadline, the report starts with the deadline and not the job holding it up. `blocks` is only worked out for failed jobs.
 
+The Windows lab found what the fake mornings could not: on a job that failed days ago, Start here said "it is new tonight". The reason
+now only says what is true of the alert.
+
 The grader is strict in two places, and was left as it was: naming a job that a failure blocked counts as a wrong set, and so does
 leaving out a person's test run or an old failure. Most of the 40 scores' remaining misses are those.

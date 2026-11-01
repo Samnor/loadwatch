@@ -36,16 +36,18 @@ def priority(alert: dict, now: datetime, window_hours: float = 24) -> tuple:
             max(alert.get("in_a_row") or 1, 1), alert.get("opened_at") or "")
 
 
-def why_first(alert: dict) -> str:
-    """Why this one, in words."""
+def why_first(alert: dict, now: datetime, window_hours: float = 24) -> str:
+    """Why this one, in words. Only what is true of it: a reason that sounds sure and is wrong is worse than none."""
     if alert["rule"] == "server-unreachable":
         return "while it does not answer, nothing is known about what runs on it"
     blocks = alert.get("blocks") or []
     if blocks:
         return f"{', '.join(blocks)} did not run because of it"
-    n = alert.get("in_a_row") or 0
-    if n == 1:
-        return "it is new tonight"
+    at = alert.get("at")
+    if at and now - datetime.fromisoformat(at[:19]) > timedelta(hours=window_hours):
+        return f"nothing is new, and this is the first of what is still open, from {at[:10]}"
+    if alert.get("in_a_row") == 1:
+        return "it is new"
     return "it is the most recent and most serious"
 
 

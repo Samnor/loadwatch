@@ -259,3 +259,17 @@ def test_help_says_the_report_is_the_whole_answer():
     from loadwatch import cli
     text = cli.parser().format_help()
     assert "It is the whole answer" in text and "start here" in text
+
+
+def test_the_reason_to_start_is_never_new_for_something_old(estate):
+    estate.jobs = [job("Stale", "2026-10-29T15:44:00", status=0)]
+    estate.history = run_rows("Stale", 2, "2026-10-29T15:44:00", status=0) + run_rows("Stale", 1, "2026-10-28T15:44:00")
+    doc = report(estate)
+    assert doc["start_here"] == "Stale" and doc["start_because"] == "nothing is new, and this is the first of what is still open, from 2026-10-29"
+    assert doc["attention"][0]["in_a_row"] == 1
+
+
+def test_a_failure_from_last_night_is_new(estate):
+    estate.jobs = [job("Fresh", "2026-11-02T01:00:00", status=0)]
+    estate.history = run_rows("Fresh", 2, "2026-11-02T01:00:00", status=0) + run_rows("Fresh", 1, "2026-11-01T01:00:00")
+    assert report(estate)["start_because"] == "it is new"
