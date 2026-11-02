@@ -78,7 +78,7 @@ the page has its own score from Chrome, with no reader and no noise. The rule is
 | # | Change | Readers | Page score | Verdict |
 |---|---|---|---|---|
 | | Start | 92/100 | 71 | |
-| 1 | The first thing whole, in a card at the top | +0.7, z 0.36 | 71 | reverted, on branch `page-start-card` |
+| 1 | The first thing whole, in a card at the top | +0.7, z 0.36 | 71 | reverted by the rule, then put back by decision |
 | 2 | A chart for phones: names over the bars, nothing to scroll sideways | +2.8, z 1.12 | 90 | kept, the weaker kind |
 | 3 | Times as people say them, and contrast of at least 4.5 in light and dark | -2.2, z -0.88 | 100 | kept, the weaker kind |
 | 4 | A header without zeros, and no Fabric is not a finding | -1.7, z -0.72 | 100 | reverted, the last commit of branch `page-clean-header` |
@@ -91,6 +91,10 @@ and perhaps some help. Climb 3 cost readers a little within the rule's margin.
 The first set of numbers for climbs 2 to 4 was wrong. `git revert -q` is not a command, so climbs 1 and 4 stayed in, and only a look at the
 final page showed it. Climbs 2 and 3 and the held-out mornings were measured again without them, and those are the numbers above. Climb 4 was
 measured on a page that still had climb 1, and was not measured again, as it was reverted either way.
+
+The card from climb 1 is back because its owner preferred how it reads, not because the rule passed it. On top of climbs 2 and 3, readers went
+from 92 to 96 of 100 (+2.2, z 0.88), still not enough for the rule, and the page score stayed at 100. So it did no measurable harm and no
+proven good. The held-out mornings were not spent on it.
 
 The page score cannot see that the table of what ran still scrolls sideways on a phone. It has reached 100, so another climb needs a
 measure that can.
