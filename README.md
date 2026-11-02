@@ -115,7 +115,7 @@ shows it. If the file lists `environments`, those are watched instead of discove
 | `creeping` | Slower night after night, with no one bad night | |
 | `slower` | A step took much longer than usual | |
 | `health` | The SSIS catalog's own health: cleanup, retention, log growth | |
-| `fabric-failed` | A pipeline, notebook or other Fabric item failed, or a semantic model refresh, with the service's reason. `overrunning`, `ran-long` and `overdue` apply to them too | |
+| `fabric-failed` | A pipeline, notebook or other Fabric item failed, or a semantic model refresh, with the service's reason. `overrunning`, `ran-long`, `overdue`, `flaky` and `creeping` apply to them too | |
 | `server-unreachable`, `blind-spot` | Something could not be read. No answer is never good news: it clears no alert | |
 
 `loadwatch ack ID --note "..."` moves an alert out of the attention list and stops reminders. It stays open until it is over.

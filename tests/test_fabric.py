@@ -266,3 +266,36 @@ def test_a_refresh_running_far_longer_than_usual_is_overrunning():
 def test_a_refresh_running_for_about_as_long_as_usual_is_fine():
     runs = [run("2026-11-02T07:50:00", "running", took=None)] + [run(f"2026-10-2{i}T02:00:00", took=1200) for i in range(5)]
     assert judged(runs)[1] == []
+
+
+def test_a_refresh_failing_on_and_off_is_flaky_even_on_a_good_night():
+    runs = [run(f"2026-10-{d}T05:00:00", "failed" if d % 2 else "succeeded", failure="Credentials") for d in range(30, 22, -1)]
+    runs.insert(0, run("2026-11-02T05:00:00"))
+    activity, [s] = judged(runs)
+    assert s.rule == "flaky" and "failed 4 of its last 9 runs" in s.message and "Credentials" in s.message and activity.state == "ok"
+
+
+def test_one_bad_night_is_not_flaky():
+    assert judged([run("2026-11-02T05:00:00"), run("2026-11-01T05:00:00", "failed")] + [run(f"2026-10-2{i}T05:00:00") for i in range(6)])[1] == []
+
+
+def test_a_failed_refresh_is_a_failure_not_flaky():
+    runs = [run(f"2026-11-0{d}T05:00:00", "failed" if d % 2 == 0 else "succeeded") for d in range(2, 0, -1)]
+    runs += [run(f"2026-10-{d}T05:00:00", "failed" if d % 2 == 0 else "succeeded") for d in range(31, 25, -1)]
+    assert [s.rule for s in judged(runs)[1]] == ["fabric-failed"]
+
+
+def test_a_refresh_slowing_a_little_every_night_is_creeping():
+    runs = [run(f"2026-10-2{i}T05:00:00", took=5400 - (9 - i) * 420) for i in range(9, 1, -1)]
+    runs[0]["start"] = "2026-11-02T05:00:00"
+    activity, [s] = judged(runs)
+    assert s.rule == "creeping" and "has slowed steadily" in s.message and activity.state == "ok"
+
+
+def test_a_refresh_that_takes_about_the_same_is_not_creeping():
+    runs = [run("2026-11-02T05:00:00", took=1860)] + [run(f"2026-10-2{i}T05:00:00", took=1800 + i % 3) for i in range(9, 2, -1)]
+    assert judged(runs)[1] == []
+
+
+def test_flaky_and_creeping_clear_when_fabric_was_really_read():
+    assert {"flaky", "creeping"} <= collect([ITEM], {"i": []}).looked

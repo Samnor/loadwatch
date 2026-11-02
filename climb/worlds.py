@@ -498,6 +498,28 @@ def _flaky_refresh(root):
     return [s], {"workspaces": [ws], "items": {"w1": items}, "refreshes": {"m1": refreshes}}
 
 
+def _flaky_pipeline(root):
+    s = Server("prod")
+    s.add("Bronze load")
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "p1", "displayName": "Copy invoices", "type": "DataPipeline"}, {"id": "p2", "displayName": "Copy stock", "type": "DataPipeline"}]
+    def jobs(failing):
+        return [{"status": "Failed" if b in failing else "Completed", "invokeType": "Scheduled", "startTimeUtc": f"{day(b)}T04:00:00", "endTimeUtc": f"{day(b)}T04:20:00",
+                 **({"failureReason": {"errorCode": "UserError", "message": "Gateway timed out"}} if b in failing else {})} for b in range(0, 9)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "jobs": {"p1": jobs({1, 3, 4, 7}), "p2": jobs(())}}
+
+
+def _slowing_refresh(root):
+    s = Server("prod")
+    s.add("Bronze load")
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "m1", "displayName": "Sales model", "type": "SemanticModel"}, {"id": "m2", "displayName": "Stock model", "type": "SemanticModel"}]
+    def refreshes(minutes):
+        return [{"status": "Completed", "refreshType": "Scheduled", "startTime": _utc(b, 3), "endTime": f"{day(b)}T{3 + m // 60:02d}:{m % 60:02d}:00Z"}
+                for b, m in enumerate(minutes)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "refreshes": {"m1": refreshes([90 - b * 7 for b in range(10)]), "m2": refreshes([20] * 10)}}
+
+
 def _deploy_was_fine(root):
     s = Server("prod")
     s.add("Bronze load", start="01:00:00")
@@ -520,7 +542,9 @@ HELD_OUT = [
     Scenario("healthy-estate", _healthy_estate, (), None),
     Scenario("one-cause-and-another", _one_cause_and_another, ("Orders load", "Stock load", "Returns load", "Prices load", "Archive job"), "Orders load",
              also=("etl_reader", "login")),
-    Scenario("flaky-refresh", _flaky_refresh, ("Sales model",), "Sales model", note="the SQL rule for this has no Fabric twin"),
+    Scenario("flaky-refresh", _flaky_refresh, ("Sales model",), "Sales model", note="led to the Fabric flaky and creeping rules, so it no longer tests new ground"),
+    Scenario("flaky-pipeline", _flaky_pipeline, ("Copy invoices",), "Copy invoices", note="written after those rules: it tests the whole path, not generality"),
+    Scenario("slowing-refresh", _slowing_refresh, ("Sales model",), "Sales model", note="written after those rules: it tests the whole path, not generality"),
     Scenario("deploy-was-fine", _deploy_was_fine, (), None),
     Scenario("head-did-not-start", _head_did_not_start, ("1 Bronze",), "1 Bronze", note="only the head of the chain has a schedule"),
     _question("h-how-many", _one_cause_and_another, "How many jobs failed last night? Answer with a number.", "5"),

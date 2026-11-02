@@ -212,24 +212,40 @@ def _ran_long(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Si
                    f"{_minutes(usual)}. Anything after it started late", f'ssisbliss history "{v["name"]}" --runs 10', runs[0]["start"])]
 
 
-def _creeping(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Signal]:
-    """Slower night after night, with no one bad night: each run looks like the one before, and a median follows it up."""
-    took = [r["duration_s"] for r in runs if r.get("outcome") == "succeeded" and r.get("duration_s") is not None][:CREEP_RUNS]
+def creep(took: list[int], cfg: Config) -> tuple[float, float] | None:
+    """(how long it takes now, how long it took CREEP_RUNS runs ago), from durations newest first, when it has slowed a little each run:
+    no one run stands out, and a median follows it up."""
+    took = took[:CREEP_RUNS]
     if len(took) < CREEP_RUNS:
-        return []
+        return None
     now_, then = median(took[:3]), median(took[-3:])
     rising = sum(a > b for a, b in zip(took, took[1:])) / (len(took) - 1)
     if rising < CREEP_RISING or now_ < cfg.overrun_factor * 0.75 * then or now_ - then < cfg.overrun_minutes * 60:
+        return None
+    return now_, then
+
+
+def _creeping(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Signal]:
+    """Slower night after night, with no one bad night."""
+    slowing = creep([r["duration_s"] for r in runs if r.get("outcome") == "succeeded" and r.get("duration_s") is not None], cfg)
+    if not slowing:
         return []
-    return [Signal(o.env, "creeping", v["name"], "warning", f"{v['name']} has slowed steadily: about {_minutes(now_)} now against {_minutes(then)} "
-                   f"{len(took)} runs ago, a little more each run, so no one night stands out", f'ssisbliss history "{v["name"]}" --runs {len(took)}', runs[0]["start"])]
+    return [Signal(o.env, "creeping", v["name"], "warning", f"{v['name']} has slowed steadily: about {_minutes(slowing[0])} now against {_minutes(slowing[1])} "
+                   f"{CREEP_RUNS} runs ago, a little more each run, so no one night stands out", f'ssisbliss history "{v["name"]}" --runs {CREEP_RUNS}', runs[0]["start"])]
+
+
+def on_and_off(runs: list[dict], outcome: str = "outcome") -> tuple[list[dict], list[dict]]:
+    """(the last runs that finished, the bad ones among them), newest first, when the newest worked and enough of them did not. Empty
+    otherwise."""
+    done = [r for r in runs[:FLAKY_RUNS] if r.get(outcome) in ("succeeded", "failed", "canceled")]
+    bad = [r for r in done if r[outcome] != "succeeded"]
+    return (done, bad) if done and done[0][outcome] == "succeeded" and len(bad) >= FLAKY_FAILURES else ([], [])
 
 
 def _flaky(o: Observation, cfg: Config, v: dict, runs: list[dict]) -> list[Signal]:
     """Fine tonight, and failing on and off: on any one morning it looks healthy, and only its history says otherwise."""
-    done = [r for r in runs[:FLAKY_RUNS] if r.get("outcome") in ("succeeded", "failed", "canceled")]
-    bad = [r for r in done if r["outcome"] != "succeeded"]
-    if not done or done[0]["outcome"] != "succeeded" or len(bad) < FLAKY_FAILURES:
+    done, bad = on_and_off(runs)
+    if not bad:
         return []
     return [Signal(o.env, "flaky", v["name"], "warning", f"{v['name']} succeeded last, but failed {len(bad)} of its last {len(done)} runs, most "
                    f"recently at {bad[0]['start']}: {(bad[0].get('message') or 'see its history')[:200]}",

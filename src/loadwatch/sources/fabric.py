@@ -36,6 +36,7 @@ from ..activity import (
     Signal,
 )
 from ..config import Config
+from ..rules import CREEP_RUNS, creep, on_and_off
 
 FABRIC = "https://api.fabric.microsoft.com"
 POWER_BI = "https://analysis.windows.net/powerbi/api"
@@ -50,7 +51,7 @@ MODEL = "SemanticModel"
 JOB_STATUS = {"Completed": SUCCEEDED, "Failed": FAILED, "Cancelled": CANCELED, "InProgress": RUNNING, "NotStarted": RUNNING}
 # Power BI refresh history. A refresh in progress is reported as Unknown.
 REFRESH_STATUS = {"Completed": SUCCEEDED, "Failed": FAILED, "Disabled": CANCELED, "Unknown": RUNNING}
-RULES = {"fabric-failed", "ran-long", "overdue", "overrunning", "server-unreachable"}
+RULES = {"fabric-failed", "ran-long", "overdue", "overrunning", "flaky", "creeping", "server-unreachable"}
 PARALLEL = 6         # the API allows 500 calls a minute
 
 
@@ -240,6 +241,14 @@ def judge(source: str, item: dict, runs: list[dict], since: datetime, now: datet
         if last["duration_s"] >= cfg.overrun_factor * typical and last["duration_s"] - typical >= cfg.overrun_minutes * 60:
             signals.append(Signal(source, "ran-long", name, "warning", f"{what} {name} took {last['duration_s'] / 60:.0f} min at "
                                   f"{last['start']}; it usually takes {typical / 60:.0f} min", url, last["start"]))
+    done, failing = on_and_off(finished, "status")
+    if failing:
+        signals.append(Signal(source, "flaky", name, "warning", f"{what} {name} succeeded last, but failed {len(failing)} of its last {len(done)} runs, most "
+                              f"recently at {failing[0]['start']}: {(failing[0]['failure'] or 'see its history')[:200]}", url, done[0]["start"]))
+    slowing = creep(usual, cfg)
+    if slowing:
+        signals.append(Signal(source, "creeping", name, "warning", f"{what} {name} has slowed steadily: about {slowing[0] / 60:.0f} min now against "
+                              f"{slowing[1] / 60:.0f} min {CREEP_RUNS} runs ago, a little more each run, so no one run stands out", url, finished[0]["start"]))
     starts = [datetime.fromisoformat(r["start"]) for r in runs if r["scheduled"]]     # a manual run says nothing about a schedule
     running = len(finished) < len(runs)
     current = next((r for r in runs if r["status"] == RUNNING), None)
