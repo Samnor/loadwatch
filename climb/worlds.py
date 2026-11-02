@@ -472,7 +472,59 @@ SCENARIOS += [
     _question("q-since", _evening, "Which jobs failed since 18:00 yesterday? Answer with names, or none.", "Evening extract"),
     _question("q-which-server", _two_servers, "On which server did Daily load fail?", "prod"),
 ]
-HELD_OUT: list[Scenario] = []
+# Written after all ten climbs, and never used to make a change. Some are expected to go badly.
+def _healthy_estate(root):
+    s = Server("prod")
+    for i in range(40):
+        s.add(f"Load table {i:02d}", start=f"0{1 + i % 6}:{i:02d}:00", took=200 + i, nights=8)
+    return [s]
+
+
+def _one_cause_and_another(root):
+    s = Server("prod")
+    for i, n in enumerate(("Orders load", "Stock load", "Returns load", "Prices load")):
+        s.add(n, start=f"0{i + 1}:00:00", status=0, message="Login failed for user 'etl_reader'.")
+    s.add("Archive job", "PowerShell", "C:\\etl\\archive.ps1", start="05:00:00", status=0, message="Disk is full")
+    return [s]
+
+
+def _flaky_refresh(root):
+    s = Server("prod")
+    s.add("Bronze load")
+    ws = {"id": "w1", "displayName": "Sales", "type": "Workspace"}
+    items = [{"id": "m1", "displayName": "Sales model", "type": "SemanticModel"}]
+    refreshes = [{"status": "Failed" if b % 2 else "Completed", "refreshType": "Scheduled", "startTime": _utc(b, 5), "endTime": f"{day(b)}T05:10:00Z",
+                  **({"serviceExceptionJson": '{"errorCode":"ModelRefresh_ShortMessage_ProcessingError"}'} if b % 2 else {})} for b in range(0, 8)]
+    return [s], {"workspaces": [ws], "items": {"w1": items}, "refreshes": {"m1": refreshes}}
+
+
+def _deploy_was_fine(root):
+    s = Server("prod")
+    s.add("Bronze load", start="01:00:00")
+    s.add("Silver load", start="02:00:00")
+    s.deployed_by = ("LAB\\bob", f"{day()}T00:15:00")
+    return [s]
+
+
+def _head_did_not_start(root):
+    s = Server("prod")
+    s.add("1 Bronze", start="00:30:00", today=False)
+    s.add("2 Silver", start="01:00:00", schedules=0, today=False)
+    s.add("3 Gold", start="02:00:00", schedules=0, today=False)
+    chained(s, "1 Bronze", "2 Silver", "3 Gold")
+    s.add("Fetch prices", start="03:00:00")
+    return [s]
+
+
+HELD_OUT = [
+    Scenario("healthy-estate", _healthy_estate, (), None),
+    Scenario("one-cause-and-another", _one_cause_and_another, ("Orders load", "Stock load", "Returns load", "Prices load", "Archive job"), "Orders load",
+             also=("etl_reader", "login")),
+    Scenario("flaky-refresh", _flaky_refresh, ("Sales model",), "Sales model", note="the SQL rule for this has no Fabric twin"),
+    Scenario("deploy-was-fine", _deploy_was_fine, (), None),
+    Scenario("head-did-not-start", _head_did_not_start, ("1 Bronze",), "1 Bronze", note="only the head of the chain has a schedule"),
+    _question("h-how-many", _one_cause_and_another, "How many jobs failed last night? Answer with a number.", "5"),
+]
 
 
 def build(s: Scenario, root: Path) -> dict:
