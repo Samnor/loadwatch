@@ -19,7 +19,7 @@ loadwatch report --since 2026-11-01T18:00:00           # a longer night
 loadwatch report --format json                         # for agents and scripts
 ```
 
-A report needs nothing running before it: it reads every job's history itself. It also keeps a little memory, so each
+The report opens with where to start and why, and says what it looked at. It needs nothing running before it: it reads every job's history itself. It also keeps a little memory, so each
 morning's report knows more than the last.
 
 ```
@@ -98,7 +98,9 @@ shows it. If the file lists `environments`, those are watched instead of discove
 
 | Rule | | Needs |
 |---|---|---|
-| `job-failed` | A job failed, with the step, and for a package the task, error, database and usual cause. Last night's rank above old ones | |
+| `nothing-started` | Most of a server's scheduled jobs have stopped starting: look at SQL Server Agent | |
+| `shared-cause` | The same error in several jobs: one finding, and one fix | |
+| `job-failed` | A job failed, with the step, and for a package the task, error, database and usual cause. It says if it is new or how long it has failed, what it blocked, and who deployed just before | |
 | `deadline-missed` | A job has not succeeded by the time you said | `[[expect]]` |
 | `overdue` | Longer without a run than the job's longest recent gap | |
 | `missed-schedule` | Due, and did not start | memory |
@@ -109,9 +111,11 @@ shows it. If the file lists `environments`, those are watched instead of discove
 | `ssis-failed` | A package failed and no job failed with it: run by hand, or started without waiting for it | |
 | `chain-stopped`, `chain-missing-job` | A job chain stopped with nothing failed, or starts a job that does not exist | |
 | `ran-long` | A job's run took far longer than usual. It worked, this time, and whatever came after it started late | |
+| `flaky` | Fine tonight, and failing on and off | |
+| `creeping` | Slower night after night, with no one bad night | |
 | `slower` | A step took much longer than usual | |
 | `health` | The SSIS catalog's own health: cleanup, retention, log growth | |
-| `fabric-failed` | A pipeline, notebook or other Fabric item failed, or a semantic model refresh, with the service's reason | |
+| `fabric-failed` | A pipeline, notebook or other Fabric item failed, or a semantic model refresh, with the service's reason. `overrunning`, `ran-long` and `overdue` apply to them too | |
 | `server-unreachable`, `blind-spot` | Something could not be read. No answer is never good news: it clears no alert | |
 
 `loadwatch ack ID --note "..."` moves an alert out of the attention list and stops reminders. It stays open until it is over.

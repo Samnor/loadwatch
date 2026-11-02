@@ -32,3 +32,36 @@ now only says what is true of the alert.
 
 The grader is strict in two places, and was left as it was: naming a job that a failure blocked counts as a wrong set, and so does
 leaving out a person's test run or an old failure. Most of the 40 scores' remaining misses are those.
+
+## Second climb, 2026-11-02
+
+Ten more, on a wider set: first 31 scenarios, then 36, then 42, with questions as well as mornings, because the first set had reached its
+maximum. Haiku and Luna, two runs each.
+
+| # | Change | Verdict |
+|---|---|---|
+| 1 | `flaky`: fine tonight, failing on and off | kept: the report is better |
+| 2 | `nothing-started`: most of a server's jobs stop starting, so the finding is the server | kept: the report is better |
+| 3 | `shared-cause`: the same error in several jobs is one finding | kept: the report is better |
+| 4 | A failure says who deployed just before it | kept: a blind spot fixed (`q-what-changed`) |
+| 5 | `--help` shows how to get the page | reverted: +2.3, z 1.14 |
+| 6 | Everything that needs attention, in one line | reverted: +1.2, z 0.62 |
+| 7 | A Finished column | reverted: -1.6, z -0.81 |
+| 8 | A Fabric item running far longer than usual | kept: the report is better |
+| 9 | A chain stopped by a disabled job names that job | kept: the report is better |
+| 10 | `creeping`: slower night after night | kept: a blind spot fixed |
+
+The rule moved twice during this climb, each time written down before the measurements it applied to: a scenario going from at most 1 of 4
+right to at least 3 of 4 also keeps a change, and the gain needed became half a scenario, as 5 points had been with 10 scenarios. Climbs 4
+and 10 needed the first. Neither changed an earlier verdict.
+
+What most changed the numbers was not a climb. Agents went from 131 to 140 of 144 right when the prompt stopped asking for "job or model
+names" on questions that wanted a yes or a number: much of what looked like the tool's weakness was the grader's. Between identical
+measurements the score moves by about 5 runs in 144.
+
+On six held-out mornings written after all ten, before and after are the same: 20/24, with the same four misses (+0.29 points, z 1.29). The
+climb did not make general reading better, which was already good. It closed specific blind spots, which those mornings hardly have. The
+four misses are one morning, a refresh failing every other night: `flaky` and `creeping` have no Fabric twin.
+
+On the Windows lab all of it ran on real data, and `flaky` found a job failing 8 of its last 10 runs.
+
