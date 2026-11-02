@@ -2,7 +2,7 @@
 from conftest import job, run_rows, step
 from test_report import report
 
-from loadwatch import gantt
+from loadwatch import gantt, html_report
 
 
 def night(estate):
@@ -100,6 +100,12 @@ def test_a_phone_gets_a_chart_of_its_own_with_names_over_the_bars(estate, tmp_pa
     assert '<svg class="gantt phone"' in html and "@media (max-width:700px){svg.gantt{display:none}svg.gantt.phone{display:block}}" in html
     drawn = gantt.svg(gantt.timeline(report_activities(), gantt._at("2026-11-02T08:00:00")), phone=True)
     assert 'viewBox="0 0 326 ' in drawn and 'x="2" y="42">Bronze' in drawn
+
+
+def test_a_page_says_times_as_people_do_and_keeps_commands_exact():
+    assert html_report._when("failed at 2026-11-02T04:18:00, and at 2026-11-01T23:05:30", "2026-11-02") == "failed at 04:18, and at 1 Nov 23:05"
+    assert html_report._when("Since 2026-11-02 00:00:00", "2026-11-03") == "Since 2 Nov 00:00"
+    assert html_report._when("build 2026-11-02 only", "2026-11-02") == "build 2026-11-02 only"
 
 
 def test_server_text_is_escaped_everywhere(estate, tmp_path):

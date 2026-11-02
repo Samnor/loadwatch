@@ -2,6 +2,7 @@
 that came from a server is escaped: job names and messages are other people's text."""
 from __future__ import annotations
 
+import re
 from html import escape
 
 from . import gantt
@@ -9,10 +10,12 @@ from . import gantt
 STATES = {"failed": "× Failed", "missing": "! Did not run", "suspect": "? Suspect", "slow": "! Slow", "running": "Running",
           "recovered": "Recovered", "ok": "OK"}
 LEGEND = [("ok", "Succeeded"), ("slow", "! Slow"), ("suspect", "? Suspect"), ("failed", "× Failed"), ("canceled", "× Canceled"), ("running", "Running")]
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_MOMENT = re.compile(r"\b(\d{4}-(\d\d)-(\d\d))[T ](\d\d:\d\d)(?::\d\d)?\b")
 CSS = """
-:root{color-scheme:light;--surface:#fcfcfb;--page:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+:root{color-scheme:light;--surface:#fcfcfb;--page:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--muted:#6b6a65;--grid:#e1e0d9;--axis:#c3c2b7;
 --band:rgba(11,11,11,.025);--line:rgba(11,11,11,.10);--good:#0ca30c;--warning:#fab219;--serious:#ec835a;--critical:#d03b3b;--run:#2a78d6;--fill:#c3c2b7}
-@media (prefers-color-scheme:dark){:root{color-scheme:dark;--surface:#1a1a19;--page:#0d0d0d;--ink:#f0efec;--ink2:#c3c2b7;--grid:#2c2c2a;--axis:#383835;
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--surface:#1a1a19;--page:#0d0d0d;--ink:#f0efec;--ink2:#c3c2b7;--muted:#9a9891;--grid:#2c2c2a;--axis:#383835;
 --band:rgba(255,255,255,.03);--line:rgba(255,255,255,.10);--run:#3987e5;--fill:#52514e}}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}h1{font-size:26px;line-height:1.25;margin:0 0 4px}h2{font-size:17px;margin:32px 0 10px}
@@ -46,12 +49,17 @@ document.querySelectorAll('.hit').forEach(function(r){r.addEventListener('pointe
 """
 
 
-def _alerts(alerts: list[dict]) -> str:
+def _when(text: str, today: str) -> str:
+    """Times as people say them: 04:18 today, 1 Nov 04:18 before that. For a page's sentences: the commands stay exact."""
+    return _MOMENT.sub(lambda m: m[4] if m[1] == today else f"{int(m[3])} {MONTHS[int(m[2]) - 1]} {m[4]}", text)
+
+
+def _alerts(alerts: list[dict], today: str) -> str:
     items = []
     for a in alerts:
         cmd = f"<code>{escape(a['next'])}</code>" if a.get("next") else ""
         note = f"<div class=sub>Acknowledged: {escape(a['ack_note'])}</div>" if a.get("ack_note") else ""
-        items.append(f'<li><span class="subject">[{escape(a["env"])}] {escape(a["subject"])}</span><br>{escape(a["message"])}{cmd}{note}</li>')
+        items.append(f'<li><span class="subject">[{escape(a["env"])}] {escape(a["subject"])}</span><br>{escape(_when(a["message"], today))}{cmd}{note}</li>')
     return f'<section class="card"><ul class="alerts">{"".join(items)}</ul></section>'
 
 
@@ -61,7 +69,7 @@ def _table(doc: dict) -> str:
         last = a["runs"][0] if a["runs"] else {}
         count = f"{len(a['runs'])}{'+' if a['more_runs'] else ''}"
         rows.append(f'<tr><td class="n">{STATES.get(a["state"], escape(a["state"]))}</td><td>{escape(a["name"])}</td><td class="n">{count}</td>'
-                    f'<td class="n">{escape((last.get("start") or "-").replace("T", " "))}</td><td class="n">{gantt.clock(last.get("duration_s"))}</td>'
+                    f'<td class="n">{escape(_when(last.get("start") or "-", doc["at"][:10]))}</td><td class="n">{gantt.clock(last.get("duration_s"))}</td>'
                     f'<td class="n">{gantt.clock(a["usual_s"])}</td><td>{escape(a["what"])}</td></tr>')
     head = "".join(f"<th>{h}</th>" for h in ("State", "Name", "Runs", "Last start", "Took", "Usual", "What it runs"))
     return f'<section class="card scroll"><table><tr>{head}</tr>{"".join(rows)}</table></section>'
@@ -69,17 +77,18 @@ def _table(doc: dict) -> str:
 
 def page(doc: dict) -> str:
     from .report import HEADINGS, looked_at, summary
+    today = doc["at"][:10]
     parts = [f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              f'<title>{escape(doc["verdict"])}</title><style>{CSS}</style><main><h1>{escape(doc["verdict"])}</h1>'
-             f'<p class="sub">{escape(summary(doc))}</p><p class="sub">{escape(looked_at(doc))}</p>']
+             f'<p class="sub">{escape(_when(summary(doc), today))}</p><p class="sub">{escape(looked_at(doc))}</p>']
     if doc.get("start_here"):
         parts.append(f'<p class="start"><b>Start here: {escape(doc["start_here"])}</b>: {escape(doc["start_because"])}.</p>')
     for severity, title in HEADINGS.items():
         found = [a for a in doc["attention"] if a["severity"] == severity]
         if found:
-            parts.append(f"<h2>{title} ({len(found)})</h2>{_alerts(found)}")
+            parts.append(f"<h2>{title} ({len(found)})</h2>{_alerts(found, today)}")
     if doc["acknowledged"]:
-        parts.append(f"<h2>Acknowledged ({len(doc['acknowledged'])})</h2>{_alerts(doc['acknowledged'])}")
+        parts.append(f"<h2>Acknowledged ({len(doc['acknowledged'])})</h2>{_alerts(doc['acknowledged'], today)}")
     t = doc["timeline"]
     if t["rows"]:
         keys = "".join(f'<span><i class="key {k}"></i>{label}</span>' for k, label in LEGEND)
