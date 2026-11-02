@@ -141,7 +141,7 @@ def prepare(s: worlds.Scenario, root: Path, bin_dir: Path) -> dict:
     page = root / "page.html"
     subprocess.run([bin_dir / "loadwatch", "report", "--format", "html", "--out", page], cwd=world["work"], env=env, capture_output=True)
     doc = json.loads(subprocess.run([bin_dir / "loadwatch", "report", "--format", "json"], cwd=world["work"], env=env, capture_output=True, text=True).stdout)
-    html = page.read_text(encoding="utf-8")
+    html = re.sub(r"fake://[^\s\"'<>)\]]*/servers/([\w-]+)", r"\1", page.read_text(encoding="utf-8"))     # a real server has a short name
     want = {"verdict": doc["verdict"], "start": doc.get("start_here") or "", "why": why_text(doc)}
     light, dark = measure(root, html, want, PHONE, False), measure(root, html, want, PHONE, True)
     (root / "light.html").write_text(scheme(html, False), encoding="utf-8")
