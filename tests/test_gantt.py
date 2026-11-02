@@ -108,6 +108,14 @@ def test_a_page_says_times_as_people_do_and_keeps_commands_exact():
     assert html_report._when("build 2026-11-02 only", "2026-11-02") == "build 2026-11-02 only"
 
 
+def test_the_first_thing_is_on_the_page_once_and_whole(estate, tmp_path):
+    night(estate)
+    html = page(estate, tmp_path)
+    start, rest = html.split('<section class="card start critical">')[1].split("</section>", 1)
+    assert "Start here, on prod" in start and "Why first:" in start and "<code>" in start
+    assert "Silver failed at" in start and "Silver failed at" not in rest and " more)</h2>" in rest
+
+
 def test_server_text_is_escaped_everywhere(estate, tmp_path):
     evil = '<img src=x onerror=alert(1)>"'
     estate.jobs = [job(evil, "2026-11-02T01:00:00", status=0, message=evil)]

@@ -19,10 +19,12 @@ CSS = """
 --band:rgba(255,255,255,.03);--line:rgba(255,255,255,.10);--run:#3987e5;--fill:#52514e}}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}h1{font-size:26px;line-height:1.25;margin:0 0 4px}h2{font-size:17px;margin:32px 0 10px}
-.sub{color:var(--ink2);margin:0}.start{margin:12px 0 0;font-size:16px}section.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.sub{color:var(--ink2);margin:0}section.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 ul.alerts{list-style:none;margin:0;padding:0}ul.alerts li{padding:10px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}ul.alerts li:first-child{border-top:0;padding-top:0}
 ul.alerts li:last-child{padding-bottom:0}.subject{font-weight:600}code{font:13px ui-monospace,Consolas,monospace;color:var(--ink2);display:block;margin-top:4px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink2);font-size:13px;margin-bottom:8px}.legend span{display:inline-flex;align-items:center;gap:6px}
+section.start{margin-top:16px;border-left:6px solid var(--warning);overflow-wrap:anywhere}section.start.critical{border-left-color:var(--critical)}
+.eyebrow{color:var(--ink2);font-size:13px;font-weight:600}.title{font-size:20px;line-height:1.3;font-weight:700;margin:2px 0 6px}.because{font-weight:600;margin-bottom:6px}
 .key{width:18px;height:10px;border-radius:3px;display:inline-block}.scroll{overflow-x:auto}
 svg.gantt{display:block;width:100%;min-width:900px;height:auto;font:12px system-ui,-apple-system,"Segoe UI",sans-serif}
 svg.gantt.phone{display:none;min-width:0;font-size:13px}svg.phone .tick,svg.phone .nowlabel{font-size:13px}
@@ -63,6 +65,13 @@ def _alerts(alerts: list[dict], today: str) -> str:
     return f'<section class="card"><ul class="alerts">{"".join(items)}</ul></section>'
 
 
+def _start(doc: dict, a: dict, today: str) -> str:
+    """The first thing, whole, where the eye lands: on a phone it is the first screen."""
+    cmd = f"<code>{escape(a['next'])}</code>" if a.get("next") else ""
+    return (f'<section class="card start {escape(a["severity"])}"><div class="eyebrow">Start here, on {escape(a["env"])}</div><div class="title">{escape(a["subject"])}</div>'
+            f'<div class="because">Why first: {escape(_when(doc["start_because"], today))}</div><div>{escape(_when(a["message"], today))}</div>{cmd}</section>')
+
+
 def _table(doc: dict) -> str:
     rows = []
     for a in doc["activities"]:
@@ -81,12 +90,14 @@ def page(doc: dict) -> str:
     parts = [f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
              f'<title>{escape(doc["verdict"])}</title><style>{CSS}</style><main><h1>{escape(doc["verdict"])}</h1>'
              f'<p class="sub">{escape(_when(summary(doc), today))}</p><p class="sub">{escape(looked_at(doc))}</p>']
-    if doc.get("start_here"):
-        parts.append(f'<p class="start"><b>Start here: {escape(doc["start_here"])}</b>: {escape(doc["start_because"])}.</p>')
+    top = doc["attention"][0] if doc.get("start_here") else None
+    if top:
+        parts.append(_start(doc, top, today))
     for severity, title in HEADINGS.items():
-        found = [a for a in doc["attention"] if a["severity"] == severity]
+        found = [a for a in doc["attention"] if a["severity"] == severity and a is not top]
         if found:
-            parts.append(f"<h2>{title} ({len(found)})</h2>{_alerts(found, today)}")
+            more = " more" if top and top["severity"] == severity else ""
+            parts.append(f"<h2>{title} ({len(found)}{more})</h2>{_alerts(found, today)}")
     if doc["acknowledged"]:
         parts.append(f"<h2>Acknowledged ({len(doc['acknowledged'])})</h2>{_alerts(doc['acknowledged'], today)}")
     t = doc["timeline"]
