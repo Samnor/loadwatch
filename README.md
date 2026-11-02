@@ -43,7 +43,7 @@ Since 2026-11-02 00:00:00, at 2026-11-02 08:10:00: 3 ran: 1 fine, 1 failed, 1 su
 
 The HTML report draws the period as a Gantt chart: one row per job, time across, a bar for every run, in the order the
 night ran. [docs/sample-report.html](docs/sample-report.html) is a sample from a fake estate. The page is one self-contained
-file, so it opens from disk and goes in an email, in light or dark. A terminal gets the same chart in plain ASCII, and
+file, so it opens from disk and goes in an email, in light or dark, and on a phone the chart redraws with names over the bars. A terminal gets the same chart in plain ASCII, and
 `--format json` has it as data under `timeline`.
 
 Beyond start and end, it shows what a morning needs:

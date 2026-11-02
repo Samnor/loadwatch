@@ -70,3 +70,27 @@ Fabric mornings scored 30 each before). That is no evidence of generality: `flak
 `slowing-refresh` were written after it, so they only show the whole path works. All 42 tuned mornings give the same report as before, byte
 for byte, and 200 jobs still take 1.6 s. Fabric's two rules have not run on a real tenant, and the Windows lab was not rerun on this commit.
 
+## The page
+
+`climb/page.py` asks the same of the HTML report: readers get only screenshots of the real page in Chrome, on a phone and on a laptop, and
+the page has its own score from Chrome, with no reader and no noise. The rule is in the script, fixed before the first measurement.
+
+| # | Change | Readers | Page score | Verdict |
+|---|---|---|---|---|
+| | Start | 92/100 | 71 | |
+| 1 | The first thing whole, in a card at the top | +0.7, z 0.36 | 71 | reverted, on branch `page-start-card` |
+| 2 | A chart for phones: names over the bars, nothing to scroll sideways | +2.8, z 1.12 | 90 | kept, the weaker kind |
+| 3 | Times as people say them, and contrast of at least 4.5 in light and dark | -2.2, z -0.88 | 100 | kept, the weaker kind |
+| 4 | A header without zeros, and no Fabric is not a finding | -1.7, z -0.72 | 100 | reverted, the last commit of branch `page-clean-header` |
+
+Readers could already read the page, at 92 of 100, so what this bought is the layout: all of the chart on a phone instead of 40%, no text
+under 12 px instead of 8.8, contrast 5.1 instead of 3.4. On five mornings and five questions kept out of the climb, readers went from 48/52
+to 51/52 (+4.6, z 1.69). That passes the rule, narrowly, and rests on three runs: the noise is a few runs in 100, so read it as no harm
+and perhaps some help. Climb 3 cost readers a little within the rule's margin.
+
+The first set of numbers for climbs 2 to 4 was wrong. `git revert -q` is not a command, so climbs 1 and 4 stayed in, and only a look at the
+final page showed it. Climbs 2 and 3 and the held-out mornings were measured again without them, and those are the numbers above. Climb 4 was
+measured on a page that still had climb 1, and was not measured again, as it was reverted either way.
+
+The page score cannot see that the table of what ran still scrolls sideways on a phone. It has reached 100, so another climb needs a
+measure that can.
