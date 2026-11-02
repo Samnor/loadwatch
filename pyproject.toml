@@ -14,9 +14,8 @@ loadwatch = "loadwatch.cli:main"
 [dependency-groups]
 dev = ["pytest>=8"]
 
-# Working on both: `uv sync` uses the checkout next to this one. pip does not read this.
-[tool.uv.sources]
-ssisbliss = { path = "../Onpremtools", editable = true }
+# Working on both: `uv run --with-editable ../Onpremtools pytest`. No [tool.uv.sources] here: uv reads it from a GitHub install too,
+# and that path only exists on this machine.
 
 [build-system]
 requires = ["hatchling"]

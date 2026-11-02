@@ -34,7 +34,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ssisbliss", editable = "../Onpremtools" }]
+requires-dist = [{ name = "ssisbliss", url = "https://github.com/Samnor/ssisbliss/archive/d446fbcd558f46d5240042363011a2d4fd3d26df.zip" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
@@ -147,17 +147,15 @@ wheels = [
 [[package]]
 name = "ssisbliss"
 version = "0.2.0"
-source = { editable = "../Onpremtools" }
+source = { url = "https://github.com/Samnor/ssisbliss/archive/d446fbcd558f46d5240042363011a2d4fd3d26df.zip" }
 dependencies = [
     { name = "pyodbc" },
     { name = "sqlglot" },
 ]
+sdist = { hash = "sha256:36f0eb3278a277ce837ae1362c1522892bc38bba31f98f0def30d705fae6ef24" }
 
 [package.metadata]
 requires-dist = [
     { name = "pyodbc", specifier = ">=5.0" },
     { name = "sqlglot", specifier = ">=30,<31" },
 ]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
