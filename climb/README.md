@@ -65,3 +65,8 @@ four misses are one morning, a refresh failing every other night: `flaky` and `c
 
 On the Windows lab all of it ran on real data, and `flaky` found a job failing 8 of its last 10 runs.
 
+`flaky` and `creeping` now read Fabric too, from the same code as SQL Server. Held-out went to 32/32 and 700/700 from the report (the three
+Fabric mornings scored 30 each before). That is no evidence of generality: `flaky-refresh` led to the change, and `flaky-pipeline` and
+`slowing-refresh` were written after it, so they only show the whole path works. All 42 tuned mornings give the same report as before, byte
+for byte, and 200 jobs still take 1.6 s. Fabric's two rules have not run on a real tenant, and the Windows lab was not rerun on this commit.
+
