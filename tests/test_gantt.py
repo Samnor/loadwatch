@@ -73,6 +73,10 @@ def test_ticks_stay_readable_on_any_span():
     assert 2 <= len(t) <= 11
 
 
+def report_activities():
+    return [{"source": "prod", "name": "Bronze", "state": "ok", "what": "T-SQL", "usual_s": 600, "runs": [{"start": "2026-11-02T01:00:00", "status": "succeeded", "duration_s": 600}]}]
+
+
 def page(estate, tmp_path):
     out = tmp_path / "morning.html"
     estate.save()
@@ -88,6 +92,14 @@ def test_the_page_stands_alone_with_the_chart_above_the_table(estate, tmp_path):
     for loads in ("http://", "https://", 'src="', "<link"):
         assert loads not in html.split("<svg", 1)[0].replace('xmlns="http://www.w3.org/2000/svg"', "") and 'src="' not in html
     assert "! did not run" in html and 'class="due missed"' in html and "prefers-color-scheme:dark" in html
+
+
+def test_a_phone_gets_a_chart_of_its_own_with_names_over_the_bars(estate, tmp_path):
+    night(estate)
+    html = page(estate, tmp_path)
+    assert '<svg class="gantt phone"' in html and "@media (max-width:700px){svg.gantt{display:none}svg.gantt.phone{display:block}}" in html
+    drawn = gantt.svg(gantt.timeline(report_activities(), gantt._at("2026-11-02T08:00:00")), phone=True)
+    assert 'viewBox="0 0 326 ' in drawn and 'x="2" y="42">Bronze' in drawn
 
 
 def test_server_text_is_escaped_everywhere(estate, tmp_path):

@@ -133,6 +133,7 @@ def text(t: dict, width: int = 64, label: int = 26) -> str:
 
 LEFT, RIGHT, TOP, ROW, BAR, STRIP = 250, 56, 28, 24, 14, 56
 WIDTH = 1120
+PHONE_WIDTH, PHONE_RIGHT, PHONE_ROW, PHONE_TICKS = 326, 16, 42, 44     # names over their bars: a phone has no room beside them
 
 
 def _bar_tip(row: dict, b: dict) -> str:
@@ -141,51 +142,56 @@ def _bar_tip(row: dict, b: dict) -> str:
     return f"{row['name']}|{LABELS[b['status']]}: {start} to {end}|took {clock(b['took_s'])}{usual}|{row['what']}"
 
 
-def svg(t: dict) -> str:
-    """The chart. Every string that came from a server is escaped."""
+def svg(t: dict, phone: bool = False) -> str:
+    """The chart, wide with names beside the bars, or for a phone with names over them. Every string that came from a server is escaped."""
     start, end = _at(t["start"]), _at(t["end"])
     span = (end - start).total_seconds() or 1
-    plot = WIDTH - LEFT - RIGHT
+    width, left_edge, row_height = (PHONE_WIDTH, 0, PHONE_ROW) if phone else (WIDTH, LEFT, ROW)
+    plot = width - left_edge - (PHONE_RIGHT if phone else RIGHT)
     rows = t["rows"]
-    bottom = TOP + ROW * len(rows)
+    bottom = TOP + row_height * len(rows)
     strip = t["peak"] > 1
     height = bottom + (STRIP + 26 if strip else 10)
 
     def x(moment: datetime | str) -> float:
         at = _at(moment) if isinstance(moment, str) else moment
-        return round(LEFT + (at - start).total_seconds() / span * plot, 1)
+        return round(left_edge + (at - start).total_seconds() / span * plot, 1)
 
-    out = [f'<svg class="gantt" viewBox="0 0 {WIDTH} {height}" role="img" aria-label="Timeline of {len(rows)} jobs. '
+    out = [f'<svg class="gantt{" phone" if phone else ""}" viewBox="0 0 {width} {height}" role="img" aria-label="Timeline of {len(rows)} jobs. '
            f'Every run is also in the table below." xmlns="http://www.w3.org/2000/svg">']
+    last_label = -PHONE_TICKS
     for tick in t["ticks"]:
         at = x(tick)
         out.append(f'<line class="grid" x1="{at}" x2="{at}" y1="{TOP - 6}" y2="{height - 18 if strip else bottom}"/>')
         label = tick[11:16] if tick[11:16] != "00:00" else f"{tick[8:10]}/{tick[5:7]}"
-        if abs(at - x(t["now"])) >= 34:      # the "now" label sits on the same line
+        if abs(at - x(t["now"])) >= 34 and (not phone or (at - last_label >= PHONE_TICKS and at >= 16)):      # the "now" label sits on the same line
             out.append(f'<text class="tick" x="{at}" y="{TOP - 12}" text-anchor="middle">{label}</text>')
+            last_label = at
     for i, r in enumerate(rows):
-        top = TOP + ROW * i
-        mid = top + ROW / 2
+        top = TOP + row_height * i
+        mid = top + (29 if phone else ROW / 2)
         name = escape(r["name"])
         if i % 2:
-            out.append(f'<rect class="band" x="0" y="{top}" width="{WIDTH}" height="{ROW}"/>')
-        short = name if len(r["name"]) <= 34 else escape(r["name"][:33]) + "…"
-        out.append(f'<text class="name" x="{LEFT - 12}" y="{mid + 4}" text-anchor="end">{short}<title>{name}</title></text>')
+            out.append(f'<rect class="band" x="0" y="{top}" width="{width}" height="{row_height}"/>')
+        limit = 48 if phone else 34
+        short = name if len(r["name"]) <= limit else escape(r["name"][:limit - 1]) + "…"
+        where = f'x="2" y="{top + 14}"' if phone else f'x="{LEFT - 12}" y="{mid + 4}" text-anchor="end"'
+        out.append(f'<text class="name" {where}>{short}<title>{name}</title></text>')
         if not r["bars"]:
-            out.append(f'<text class="absent" x="{LEFT + 8}" y="{mid + 4}">! did not run</text>')
+            out.append(f'<text class="absent" x="{2 if phone else LEFT + 8}" y="{mid + 4}">! did not run</text>')
         for n, b in enumerate(r["bars"]):
             left, right = x(b["start"]), x(b["end"])
-            width = max(3.0, round(right - left, 1))
-            crowded = n + 1 < len(r["bars"]) and x(r["bars"][n + 1]["start"]) - (left + width) < 14    # one icon per cluster of runs
-            out.append(f'<rect class="bar {b["status"]}" x="{left}" y="{mid - BAR / 2}" width="{width}" height="{BAR}" rx="3"/>')
+            long = max(3.0, round(right - left, 1))
+            crowded = n + 1 < len(r["bars"]) and x(r["bars"][n + 1]["start"]) - (left + long) < 14    # one icon per cluster of runs
+            out.append(f'<rect class="bar {b["status"]}" x="{left}" y="{mid - BAR / 2}" width="{long}" height="{BAR}" rx="3"/>')
             usual = r.get("usual_s")
             tip = x(_at(b["start"]) + timedelta(seconds=usual)) if usual else None
-            if tip is not None and tip - left >= 6 and tip <= left + width + 40:
+            if tip is not None and tip - left >= 6 and tip <= left + long + 40:
                 out.append(f'<line class="usual" x1="{tip}" x2="{tip}" y1="{mid - BAR / 2 - 2}" y2="{mid + BAR / 2 + 2}"/>')
             if b["status"] in ICONS and not crowded:
-                out.append(f'<text class="icon" x="{left + width + 4}" y="{mid + 4}">{ICONS[b["status"]]}</text>')
-            hit = max(width, 12.0)
-            out.append(f'<rect class="hit" x="{left + width / 2 - hit / 2}" y="{top}" width="{hit}" height="{ROW}" tabindex="0" '
+                out.append(f'<text class="icon" x="{left + long + 4}" y="{mid + 4}">{ICONS[b["status"]]}</text>')
+            hit = max(long, 12.0)
+            out.append(f'<rect class="hit" x="{left + long / 2 - hit / 2}" y="{top}" width="{hit}" height="{row_height}" tabindex="0" '
                        f'data-tip="{escape(_bar_tip(r, b), quote=True)}"><title>{escape(_bar_tip(r, b).replace("|", ". "))}</title></rect>')
         if r["due"]:
             at = x(r["due"])
@@ -196,9 +202,9 @@ def svg(t: dict) -> str:
     out.append(f'<line class="now" x1="{now}" x2="{now}" y1="{TOP - 6}" y2="{height - 18 if strip else bottom}"/>')
     out.append(f'<text class="nowlabel" x="{now}" y="{TOP - 12}" text-anchor="middle">now</text>')
     if strip:
-        base, top = height - 18, bottom + 22
+        base, top = height - 18, bottom + (32 if phone else 22)
         scale = (base - top) / t["peak"]
-        path = [f"M{LEFT} {base}"]
+        path = [f"M{left_edge} {base}"]
         level = base
         for moment, n in t["running"]:
             at = x(moment)
@@ -206,8 +212,11 @@ def svg(t: dict) -> str:
             level = round(base - n * scale, 1)
             path.append(f"L{at} {level}")
         out.append(f'<path class="strip" d="{" ".join(path)} L{x(t["end"])} {level} L{x(t["end"])} {base}z"/>')
-        out.append(f'<line class="axis" x1="{LEFT}" x2="{WIDTH - RIGHT}" y1="{base}" y2="{base}"/>')
-        out.append(f'<text class="name" x="{LEFT - 12}" y="{top + 12}" text-anchor="end">Jobs running at once</text>')
-        out.append(f'<text class="tick" x="{LEFT - 12}" y="{top + 27}" text-anchor="end">most: {t["peak"]} at {t["peak_at"][11:16]}</text>')
+        out.append(f'<line class="axis" x1="{left_edge}" x2="{x(t["end"])}" y1="{base}" y2="{base}"/>')
+        if phone:
+            out.append(f'<text class="name" x="2" y="{top - 8}">Jobs running at once, most: {t["peak"]} at {t["peak_at"][11:16]}</text>')
+        else:
+            out.append(f'<text class="name" x="{LEFT - 12}" y="{top + 12}" text-anchor="end">Jobs running at once</text>')
+            out.append(f'<text class="tick" x="{LEFT - 12}" y="{top + 27}" text-anchor="end">most: {t["peak"]} at {t["peak_at"][11:16]}</text>')
     out.append("</svg>")
     return "".join(out)

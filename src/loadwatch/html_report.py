@@ -22,6 +22,8 @@ ul.alerts li:last-child{padding-bottom:0}.subject{font-weight:600}code{font:13px
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink2);font-size:13px;margin-bottom:8px}.legend span{display:inline-flex;align-items:center;gap:6px}
 .key{width:18px;height:10px;border-radius:3px;display:inline-block}.scroll{overflow-x:auto}
 svg.gantt{display:block;width:100%;min-width:900px;height:auto;font:12px system-ui,-apple-system,"Segoe UI",sans-serif}
+svg.gantt.phone{display:none;min-width:0;font-size:13px}svg.phone .tick,svg.phone .nowlabel{font-size:13px}
+@media (max-width:700px){svg.gantt{display:none}svg.gantt.phone{display:block}}
 svg .grid{stroke:var(--grid);stroke-width:1}svg .axis{stroke:var(--axis)}svg .tick{fill:var(--muted);font-size:11px}svg .name{fill:var(--ink)}
 svg .band{fill:var(--band)}svg .absent{fill:var(--ink2);font-weight:600}svg .icon{fill:var(--ink);font-weight:700}svg .hit{fill:transparent;cursor:default;outline:none}
 svg .hit:focus{stroke:var(--ink);stroke-width:1.5}svg .usual{stroke:var(--ink);stroke-width:1.5}svg .now{stroke:var(--ink2);stroke-dasharray:3 3}
@@ -83,7 +85,7 @@ def page(doc: dict) -> str:
         keys = "".join(f'<span><i class="key {k}"></i>{label}</span>' for k, label in LEGEND)
         keys += ('<span><svg width="10" height="14"><path d="M5 0v14" stroke="currentColor" stroke-width="1.5"/></svg>Usual duration</span>'
                  '<span><svg width="14" height="14"><path d="M7 1l5 6-5 6-5-6z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Deadline (filled: missed)</span>')
-        parts.append(f'<h2>The period</h2><section class="card"><div class="legend">{keys}</div><div class="scroll">{gantt.svg(t)}</div></section>')
+        parts.append(f'<h2>The period</h2><section class="card"><div class="legend">{keys}</div><div class="scroll">{gantt.svg(t)}{gantt.svg(t, phone=True)}</div></section>')
     parts.append(f"<h2>What ran ({doc['ran']})</h2>{_table(doc)}")
     if doc["resolved"]:
         items = "".join(f"<li>[{escape(a['env'])}] {escape(a['rule'])}: {escape(a['subject'])}</li>" for a in doc["resolved"])
