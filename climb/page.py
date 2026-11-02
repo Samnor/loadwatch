@@ -69,7 +69,7 @@ ANSWER: your answer"""
 MEASURE = """<script>(function(){
 var W=__WANT__,out={};function own(n){var p=n.parentElement;return p&&!p.closest('script,style,title,pre,#tip,.tip')}
 function shown(e){var s=getComputedStyle(e);return s.display!='none'&&s.visibility!='hidden'}
-var walk=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),nodes=[],n;while(n=walk.nextNode()){if(n.nodeValue.trim()&&own(n)&&shown(n.parentElement))nodes.push(n)}
+var walk=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),nodes=[],n;while(n=walk.nextNode()){if(n.nodeValue.trim()&&own(n)&&shown(n.parentElement)&&box(n).width>0)nodes.push(n)}
 function box(n){var r=document.createRange();r.selectNodeContents(n);return r.getBoundingClientRect()}
 function seen(text){if(!text)return true;var t=text.toLowerCase();return nodes.some(function(x){var b=box(x);return x.nodeValue.toLowerCase().indexOf(t)>=0&&b.width>0&&b.top>=0&&b.bottom<=innerHeight&&b.right<=innerWidth+1})}
 function lum(c){var v=c.map(function(x){x/=255;return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)});return .2126*v[0]+.7152*v[1]+.0722*v[2]}
